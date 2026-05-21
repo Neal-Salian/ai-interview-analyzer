@@ -13,7 +13,7 @@ app.add_middleware(
 )
 
 
-app.include_router(zoom_webhook.router, prefix=/api)
+app.include_router(zoom_webhook.router, prefix="/api")
 
 
 @app.get("/health")
