@@ -22,6 +22,7 @@ class Session(Base):
     started_at = Column(DateTime)
     ended_at = Column(DateTime)
     candidate = relationship("Candidate", back_populates="sessions")
+    zoom_meeting_id = Column(String, nullable=True, index=True)
 
 
 class EmotionFrame(Base):

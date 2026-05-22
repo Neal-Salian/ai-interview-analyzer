@@ -3,16 +3,16 @@ import hmac
 import json
 from fastapi import APIRouter, Request, HTTPException, Depends
 from sqlalchemy.orm import Session
-from app.database import get_db
-from app.models import Candidate, Session as InterviewSession
-from app.config import settings
+from app.db.database import get_db
+from app.db.models import Candidate, Session as InterviewSession
+from app.core.config import settings
 
 router = APIRouter()
 
 def verify_zoom_signature(request_body: bytes, timestamp: str, signature: str) -> bool:
     message = f"v0:{timestamp}:{request_body.decode('utf-8')}"
     expected = "v0=" + hmac.new(
-        settings.ZOOM_WEBHOOK_SECRET_TOKEN.encode(),
+        settings.ZOOM_WEBHOOK_SECRET.encode(),
         message.encode(),
         hashlib.sha256
     ).hexdigest()
@@ -29,7 +29,7 @@ async def zoom_webhook(request: Request, db: Session = Depends(get_db)):
     if payload.get("event") == "endpoint.url_validation":
         plain_token = payload["payload"]["plainToken"]
         hashed = hmac.new(
-            settings.ZOOM_WEBHOOK_SECRET_TOKEN.encode(),
+            settings.ZOOM_WEBHOOK_SECRET.encode(),
             plain_token.encode(),
             hashlib.sha256
         ).hexdigest()

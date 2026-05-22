@@ -1,7 +1,7 @@
 import av
 import asyncio
 from app.ml.emotion.detector import analyze_frame
-from app.ml.speech.transciber imoprt transcribe_chunk
+from app.ml.speech.transciber import transcribe_chunk
 
 async def consume_stream(meeting_id: str, rtmp_url: str):
     container = av.open(rtmp_url)

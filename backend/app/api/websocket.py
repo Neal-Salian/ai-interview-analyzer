@@ -1,5 +1,5 @@
 from fastapi import WebSocket
-from typing import dict
+
 
 active_connections: dict[str, WebSocket] = {}
 
