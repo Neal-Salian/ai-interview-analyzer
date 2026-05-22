@@ -1,30 +1,93 @@
-from fastapi import APIRouter, Request, BackgroundTasks
-import hmac, hashlib, asyncio
+import hashlib
+import hmac
+import json
+from fastapi import APIRouter, Request, HTTPException, Depends
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.models import Candidate, Session as InterviewSession
+from app.config import settings
 
 router = APIRouter()
 
-@router.post("/webhook/zoom")
-async def zoom_webhook(request: Request, background_tasks: BackgroundTasks):
-    body = await request.json()
-    event = body.get("event")
+def verify_zoom_signature(request_body: bytes, timestamp: str, signature: str) -> bool:
+    message = f"v0:{timestamp}:{request_body.decode('utf-8')}"
+    expected = "v0=" + hmac.new(
+        settings.ZOOM_WEBHOOK_SECRET_TOKEN.encode(),
+        message.encode(),
+        hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(expected, signature)
 
-    if event == "endpoint.url_validation":
-        token = body["payload"]["plainToken"]
-        hash_val = hmac.new(
-            ZOOM_WEBHOOK_SECRET.encode(),
-            token.encode(),
+@router.post("/webhook/zoom")
+async def zoom_webhook(request: Request, db: Session = Depends(get_db)):
+    body = await request.body()
+    timestamp = request.headers.get("x-zm-request-timestamp", "")
+    signature = request.headers.get("x-zm-signature", "")
+
+    # Zoom URL validation challenge (one-time handshake)
+    payload = json.loads(body)
+    if payload.get("event") == "endpoint.url_validation":
+        plain_token = payload["payload"]["plainToken"]
+        hashed = hmac.new(
+            settings.ZOOM_WEBHOOK_SECRET_TOKEN.encode(),
+            plain_token.encode(),
             hashlib.sha256
         ).hexdigest()
-        return {"plainToken": token, "encryptedToken": hash_val}
+        return {
+            "plainToken": plain_token,
+            "encryptedToken": hashed
+        }
+
+    # Verify signature on all other events
+    if not verify_zoom_signature(body, timestamp, signature):
+        raise HTTPException(status_code=401, detail="Invalid Zoom signature")
+
+    event = payload.get("event")
 
     if event == "meeting.started":
-        meeting_id = body["payload"]["object"]["id"]
-        background_tasks.add_task(
-            consume_stream,
-            meeting_id,
-            f"rtmp://localhost/live/{meeting_id}"
+        meeting_payload = payload.get("payload", {}).get("object", {})
+        zoom_meeting_id = str(meeting_payload.get("id"))
+        host_email = meeting_payload.get("host_email", "unknown@zoom.us")
+        host_name = meeting_payload.get("topic", "Unknown Candidate")
+
+        # Get or create candidate by email
+        candidate = db.query(Candidate).filter(
+            Candidate.email == host_email
+        ).first()
+
+        if not candidate:
+            candidate = Candidate(
+                name=host_name,
+                email=host_email
+            )
+            db.add(candidate)
+            db.flush()  # get candidate.id without full commit
+
+        # Create new interview session
+        session = InterviewSession(
+            candidate_id=candidate.id,
+            status="active",
+            zoom_meeting_id=zoom_meeting_id  # add this column if not present
         )
-        return {"status": "stream started"}
+        db.add(session)
+        db.commit()
+        db.refresh(session)
+
+        print(f"[ZOOM] Session {session.id} created for candidate {candidate.email}")
+        return {"status": "session_created", "session_id": session.id}
 
     if event == "meeting.ended":
-        return {"status": "meeting ended"}
+        zoom_meeting_id = str(
+            payload.get("payload", {}).get("object", {}).get("id")
+        )
+        session = db.query(InterviewSession).filter(
+            InterviewSession.zoom_meeting_id == zoom_meeting_id,
+            InterviewSession.status == "active"
+        ).first()
+
+        if session:
+            session.status = "completed"
+            db.commit()
+            print(f"[ZOOM] Session {session.id} marked completed")
+
+    return {"status": "ok"}
