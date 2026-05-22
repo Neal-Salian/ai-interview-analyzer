@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.api.routes import zoom_webhook
+from app.api.routes import zoom_webhook
 
 
 app = FastAPI(title="Ai interview Analyzer")
