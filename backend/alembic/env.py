@@ -9,6 +9,29 @@ from sqlalchemy import pool
 
 from alembic import context
 
+
+from logging.config import fileConfig
+from sqlalchemy import engine_from_config
+from sqlalchemy import pool
+from alembic import context
+
+# 1. Import your settings
+from app.core.config import settings
+# 2. Import your Base so Alembic can see your models
+from app.db.database import Base 
+
+config = context.config
+
+# 3. Override the alembic.ini URL with your real .env URL
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+# 4. Point target_metadata to your SQLAlchemy models
+target_metadata = Base.metadata
+
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
