@@ -5,6 +5,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Any, Dict
 
+import uuid
+import datetime
+from app.db.models import Candidate, Session as InterviewSession
+
 from app.core.config import settings
 from app.db.database import get_db
 from sqlalchemy.orm import Session
@@ -58,13 +62,36 @@ async def zoom_webhook(
 
     # 2. Process Actual Meeting Events
     if request.event == "meeting.started":
-        # Extract data safely assuming payload.object exists
         meeting_data = request.payload.object or {}
-        meeting_id = meeting_data.get("id")
-        topic = meeting_data.get("topic")
-        
-        print(f"SUCCESS: Zoom Meeting '{topic}' (ID: {meeting_id}) just started!")
-        
-        return JSONResponse(status_code=200, content={"message": "Meeting started event received"})
+        meeting_id = str(meeting_data.get("id", ""))
+        topic = meeting_data.get("topic", "Unknown")
+        host_email = meeting_data.get("host_email", f"host_{meeting_id}@unknown.com")
 
-    return JSONResponse(status_code=200, content={"message": "Event ignored"})
+        # Find or create candidate by host email
+        candidate = db.query(Candidate).filter(Candidate.email == host_email).first()
+        if not candidate:
+            candidate = Candidate(
+                id=uuid.uuid4(),
+                name=topic,          # use meeting topic as stand-in name
+                email=host_email,
+                created_at=datetime.datetime.utcnow()
+            )
+            db.add(candidate)
+            db.flush()               # get candidate.id before committing
+
+        # Create a new session for this meeting
+        session = InterviewSession(
+            id=uuid.uuid4(),
+            candidate_id=candidate.id,
+            zoom_meeting_id=meeting_id,
+            status="active",
+            started_at=datetime.datetime.utcnow()
+        )
+        db.add(session)
+        db.commit()
+
+        print(f"Session created for meeting '{topic}' (ID: {meeting_id}), session: {session.id}")
+        return JSONResponse(status_code=200, content={
+            "message": "Session started",
+            "session_id": str(session.id)
+        })

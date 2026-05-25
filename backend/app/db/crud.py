@@ -1,7 +1,7 @@
 import uuid
 import datetime
 from app.db.database import SessionLocal
-from app.db.models import EmotionFrame, TranscriptChunk, Job
+from app.db.models import EmotionFrame, TranscriptChunk, Job, Session, Candidate
 
 def save_emotion(session_id: str, emotion: dict):
     db = SessionLocal()
