@@ -13,6 +13,15 @@ class Candidate(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     sessions = relationship("Session", back_populates="candidate")
 
+class Job(Base):
+    __tablename__ = "jobs"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title = Column(String, nullable=False)
+    raw_description = Column(Text)
+    extracted_skills = Column(JSON)
+    seniority_level = Column(String)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    sessions = relationship("Session", back_populates="job")
 
 class Session(Base):
     __tablename__ = "sessions"
@@ -23,6 +32,9 @@ class Session(Base):
     ended_at = Column(DateTime)
     candidate = relationship("Candidate", back_populates="sessions")
     zoom_meeting_id = Column(String, nullable=True, index=True)
+    job_id = Column(UUID(as_uuid=True), ForeignKey("jobs.id"), nullable=True)
+    scheduled_at = Column(DateTime, nullable=True)
+    job = relationship("Job", back_populates="sessions")
 
 
 class EmotionFrame(Base):
