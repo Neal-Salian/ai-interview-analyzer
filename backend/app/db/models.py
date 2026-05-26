@@ -4,6 +4,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from .database import Base
 import uuid
 import datetime
+from sqlalchemy.dialects.postgresql import JSONB
 
 class Candidate(Base):
     __tablename__ = "candidates"
@@ -25,16 +26,18 @@ class Job(Base):
 
 class Session(Base):
     __tablename__ = "sessions"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    candidate_id = Column(UUID(as_uuid=True), ForeignKey("candidates.id"))
-    status = Column(String, default="pending")
-    started_at = Column(DateTime)
-    ended_at = Column(DateTime)
+
+    id = Column(Integer, primary_key=True, index=True)
+    candidate_id = Column(Integer, ForeignKey("candidates.id"))
+    status = Column(String, default="active")
+    started_at = Column(DateTime, default=datetime.utcnow)
+    ended_at = Column(DateTime, nullable=True)
+    session_summary = Column(JSONB, nullable=True)          # ← new
+
     candidate = relationship("Candidate", back_populates="sessions")
-    zoom_meeting_id = Column(String, nullable=True, index=True)
-    job_id = Column(UUID(as_uuid=True), ForeignKey("jobs.id"), nullable=True)
-    scheduled_at = Column(DateTime, nullable=True)
-    job = relationship("Job", back_populates="sessions")
+    emotion_frames = relationship("EmotionFrame", back_populates="session")
+    transcript_chunks = relationship("TranscriptChunk", back_populates="session")
+    suggested_questions = relationship("SuggestedQuestion", back_populates="session")
 
 
 class EmotionFrame(Base):
