@@ -3,6 +3,9 @@ import datetime
 from app.db.database import SessionLocal
 from app.db.models import EmotionFrame, TranscriptChunk, Job, Session, Candidate
 
+from datetime import datetime
+from sqlalchemy.orm import Session as DBSession
+from app.models import Session as InterviewSession
 
 def save_emotion(session_id: str, emotion: dict):
     db = SessionLocal()
@@ -124,3 +127,39 @@ def get_active_sessions() -> list:
             .all()
     finally:
         db.close()
+
+
+def mark_session_completed(db: DBSession, session_id: int) -> InterviewSession | None:
+    """
+    Stamps ended_at and flips status to completed.
+    Called by teardown_session() after the consumer task is cancelled.
+    """
+    session = db.query(InterviewSession).filter(InterviewSession.id == session_id).first()
+    if not session:
+        return None
+
+    session.status = "completed"
+    session.ended_at = datetime.utcnow()
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+def write_session_summary(
+    db: DBSession,
+    session_id: int,
+    summary: dict,
+) -> InterviewSession | None:
+    """
+    Writes the JSONB session_summary field.
+    Kept separate from mark_session_completed so it can be called
+    later when the LLM summary is ready (Day 2-3).
+    """
+    session = db.query(InterviewSession).filter(InterviewSession.id == session_id).first()
+    if not session:
+        return None
+
+    session.session_summary = summary
+    db.commit()
+    db.refresh(session)
+    return session
