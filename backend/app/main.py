@@ -10,18 +10,17 @@ from app.ml.stream.rtmp_consumer import consume_stream
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Runs once when the server starts.
-    Finds any sessions still marked active (meaning the server
-    crashed mid-interview) and restarts their stream consumers
-    so the pipeline keeps going without manual intervention.
-    """
-    active = get_active_sessions()
-    for session in active:
-        if session.zoom_meeting_id:
-            rtmp_url = f"rtmp://localhost:1935/live/{session.zoom_meeting_id}"
-            print(f"[STARTUP] Recovering consumer for session {session.id}")
-            asyncio.create_task(consume_stream(str(session.id), rtmp_url))
+    try:
+        active = get_active_sessions()
+        for session in active:
+            if session.zoom_meeting_id:
+                rtmp_url = f"rtmp://localhost:1935/live/{session.zoom_meeting_id}"
+                print(f"[STARTUP] Recovering consumer for session {session.id}")
+                asyncio.create_task(consume_stream(str(session.id), rtmp_url))
+        print(f"[STARTUP] Recovery check done — {len(active)} active session(s) found")
+    except Exception as e:
+        # DB might not be ready yet — log and continue, don't crash the server
+        print(f"[STARTUP] Could not check active sessions (DB unavailable?): {e}")
     yield
 
 
