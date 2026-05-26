@@ -72,3 +72,17 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
     except Exception as e:
         print(f"[WS] Unexpected error for {session_id}: {e}")
         disconnect_recruiter(session_id)
+
+
+
+# Internal test endpoint — broadcasts a fake emotion to a session
+# Only used for testing WebSocket broadcast, remove before production
+@app.post("/internal/test-broadcast/{session_id}")
+async def test_broadcast(session_id: str):
+    from app.api.websocket import broadcast
+    await broadcast(session_id, {
+        "type": "emotion",
+        "dominant_emotion": "surprised",
+        "confidence": 91.2
+    })
+    return {"status": "broadcast sent"}

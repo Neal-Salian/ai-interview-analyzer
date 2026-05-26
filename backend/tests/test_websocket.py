@@ -115,12 +115,12 @@ async def test_live_broadcast(session_id: str) -> bool:
             # Drain history first
             await recv_with_timeout(ws)
 
-            # Push a broadcast directly into the WebSocket layer
-            await broadcast(session_id, {
-                "type": "emotion",
-                "dominant_emotion": "surprised",
-                "confidence": 91.2
-            })
+            # Trigger broadcast via the server's internal endpoint
+            import httpx
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"http://localhost:8001/internal/test-broadcast/{session_id}"
+                )
 
             msg = await recv_with_timeout(ws)
 
