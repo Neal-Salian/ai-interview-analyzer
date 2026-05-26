@@ -1,9 +1,31 @@
+import asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import zoom_webhook, jobs, sessions
 from app.api.websocket import connect_recruiter, disconnect_recruiter
+from app.db.crud import get_active_sessions, get_session_history
+from app.ml.stream.rtmp_consumer import consume_stream
 
-app = FastAPI(title="AI Interview Analyzer")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Runs once when the server starts.
+    Finds any sessions still marked active (meaning the server
+    crashed mid-interview) and restarts their stream consumers
+    so the pipeline keeps going without manual intervention.
+    """
+    active = get_active_sessions()
+    for session in active:
+        if session.zoom_meeting_id:
+            rtmp_url = f"rtmp://localhost:1935/live/{session.zoom_meeting_id}"
+            print(f"[STARTUP] Recovering consumer for session {session.id}")
+            asyncio.create_task(consume_stream(str(session.id), rtmp_url))
+    yield
+
+
+app = FastAPI(title="AI Interview Analyzer", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -26,9 +48,21 @@ def health():
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
     await connect_recruiter(session_id, websocket)
     try:
-        # Keep connection alive — just listen for any client messages
-        # (client doesn't send anything, but we need to keep the loop open)
+        # Replay everything saved so far so the recruiter
+        # is fully caught up the moment they connect or reconnect
+        history = await asyncio.to_thread(get_session_history, session_id)
+        if history["emotions"] or history["transcripts"]:
+            await websocket.send_json({
+                "type": "history",
+                "emotions": history["emotions"],
+                "transcripts": history["transcripts"]
+            })
+            print(f"[WS] Replayed {len(history['emotions'])} emotions, "
+                  f"{len(history['transcripts'])} transcripts to session {session_id}")
+
+        # Keep the connection open and wait for the client
         while True:
             await websocket.receive_text()
+
     except WebSocketDisconnect:
         disconnect_recruiter(session_id)

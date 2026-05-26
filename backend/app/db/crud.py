@@ -3,6 +3,7 @@ import datetime
 from app.db.database import SessionLocal
 from app.db.models import EmotionFrame, TranscriptChunk, Job, Session, Candidate
 
+
 def save_emotion(session_id: str, emotion: dict):
     db = SessionLocal()
     try:
@@ -19,7 +20,6 @@ def save_emotion(session_id: str, emotion: dict):
         db.close()
 
 
-
 def save_transcript(session_id: str, text: str):
     db = SessionLocal()
     try:
@@ -33,6 +33,7 @@ def save_transcript(session_id: str, text: str):
         db.commit()
     finally:
         db.close()
+
 
 def create_job(title: str, raw_description: str, seniority_level: str = None):
     db = SessionLocal()
@@ -50,6 +51,7 @@ def create_job(title: str, raw_description: str, seniority_level: str = None):
     finally:
         db.close()
 
+
 def get_job(job_id: str):
     db = SessionLocal()
     try:
@@ -57,8 +59,8 @@ def get_job(job_id: str):
     finally:
         db.close()
 
+
 def get_todays_sessions():
-    import datetime
     db = SessionLocal()
     try:
         today = datetime.date.today()
@@ -66,5 +68,59 @@ def get_todays_sessions():
             Session.scheduled_at >= datetime.datetime.combine(today, datetime.time.min),
             Session.scheduled_at <= datetime.datetime.combine(today, datetime.time.max)
         ).all()
+    finally:
+        db.close()
+
+
+def get_session_history(session_id: str) -> dict:
+    """
+    Returns all emotion frames and transcript chunks saved so far
+    for a session. Called when a recruiter reconnects to replay
+    everything they missed while disconnected.
+    """
+    db = SessionLocal()
+    try:
+        emotions = db.query(EmotionFrame)\
+            .filter(EmotionFrame.session_id == session_id)\
+            .order_by(EmotionFrame.timestamp.asc())\
+            .all()
+
+        transcripts = db.query(TranscriptChunk)\
+            .filter(TranscriptChunk.session_id == session_id)\
+            .order_by(TranscriptChunk.timestamp.asc())\
+            .all()
+
+        return {
+            "emotions": [
+                {
+                    "dominant_emotion": e.dominant_emotion,
+                    "confidence": e.confidence,
+                    "timestamp": e.timestamp.isoformat()
+                }
+                for e in emotions
+            ],
+            "transcripts": [
+                {
+                    "text": t.text,
+                    "timestamp": t.timestamp.isoformat()
+                }
+                for t in transcripts
+            ]
+        }
+    finally:
+        db.close()
+
+
+def get_active_sessions() -> list:
+    """
+    Returns all sessions currently marked as active.
+    Called on server startup to restart any consumers
+    that died when the server previously crashed.
+    """
+    db = SessionLocal()
+    try:
+        return db.query(Session)\
+            .filter(Session.status == "active")\
+            .all()
     finally:
         db.close()
