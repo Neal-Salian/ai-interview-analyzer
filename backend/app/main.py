@@ -48,8 +48,6 @@ def health():
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
     await connect_recruiter(session_id, websocket)
     try:
-        # Replay everything saved so far so the recruiter
-        # is fully caught up the moment they connect or reconnect
         history = await asyncio.to_thread(get_session_history, session_id)
         if history["emotions"] or history["transcripts"]:
             await websocket.send_json({
@@ -60,9 +58,16 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             print(f"[WS] Replayed {len(history['emotions'])} emotions, "
                   f"{len(history['transcripts'])} transcripts to session {session_id}")
 
-        # Keep the connection open and wait for the client
+        # Keep connection alive — frontend doesn't send messages
+        # so we just keep the loop open until disconnect
         while True:
-            await websocket.receive_text()
+            try:
+                await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+            except asyncio.TimeoutError:
+                # Send a ping every 30s to keep the connection alive
+                await websocket.send_json({"type": "ping"})
 
     except WebSocketDisconnect:
+        disconnect_recruiter(session_id)
+    except Exception:
         disconnect_recruiter(session_id)
