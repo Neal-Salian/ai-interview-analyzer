@@ -27,14 +27,18 @@ class Job(Base):
 class Session(Base):
     __tablename__ = "sessions"
 
-    id = Column(Integer, primary_key=True, index=True)
-    candidate_id = Column(Integer, ForeignKey("candidates.id"))
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    candidate_id = Column(UUID(as_uuid=True), ForeignKey("candidates.id"), nullable=True)
+    job_id = Column(UUID(as_uuid=True), ForeignKey("jobs.id"), nullable=True)
+    zoom_meeting_id = Column(String, nullable=True, index=True)
     status = Column(String, default="active")
-    started_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime, default=datetime.datetime.utcnow)
     ended_at = Column(DateTime, nullable=True)
-    session_summary = Column(JSONB, nullable=True)          # ← new
+    scheduled_at = Column(DateTime, nullable=True)
+    session_summary = Column(JSONB, nullable=True)
 
     candidate = relationship("Candidate", back_populates="sessions")
+    job = relationship("Job", back_populates="sessions")
     emotion_frames = relationship("EmotionFrame", back_populates="session")
     transcript_chunks = relationship("TranscriptChunk", back_populates="session")
     suggested_questions = relationship("SuggestedQuestion", back_populates="session")
@@ -47,6 +51,8 @@ class EmotionFrame(Base):
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
     dominant_emotion = Column(String)
     confidence = Column(Float)
+    session = relationship("Session", back_populates="emotion_frames")  # ← add
+
 
 class TranscriptChunk(Base):
     __tablename__ = "transcript_chunks"
@@ -54,6 +60,8 @@ class TranscriptChunk(Base):
     session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"))
     text = Column(Text)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    session = relationship("Session", back_populates="transcript_chunks")  # ← add
+
 
 class SuggestedQuestion(Base):
     __tablename__ = "suggested_questions"
@@ -63,3 +71,4 @@ class SuggestedQuestion(Base):
     triggered_by = Column(Text)
     was_asked = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    session = relationship("Session", back_populates="suggested_questions")  # ← add
