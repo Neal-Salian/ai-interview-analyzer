@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
-import client from '../api/client'
+//import client from '../api/client'
 import type { Session } from '../types'
 
 const STATUS_COLOR: Record<string, string> = {
@@ -15,11 +15,35 @@ export default function SessionsPage() {
     const [error, setError] = useState('')
     const navigate = useNavigate()
 
+    // TODO: replace with real API call → client.get('/sessions/today')
     useEffect(() => {
-        client.get('/sessions/today')
-            .then(res => setSessions(res.data))
-            .catch(() => setError('Failed to load sessions'))
-            .finally(() => setLoading(false))
+        const MOCK_SESSIONS: Session[] = [
+            {
+                session_id: 'a1b2c3d4-0001-0001-0001-000000000001',
+                candidate: 'Priya Sharma',
+                job: 'Senior Backend Engineer',
+                scheduled_at: new Date().toISOString(),
+                status: 'active',
+            },
+            {
+                session_id: 'a1b2c3d4-0002-0002-0002-000000000002',
+                candidate: 'Rahul Mehta',
+                job: 'DevOps Engineer',
+                scheduled_at: new Date(Date.now() - 3600000).toISOString(),
+                status: 'completed',
+            },
+            {
+                session_id: 'a1b2c3d4-0003-0003-0003-000000000003',
+                candidate: 'Ananya Iyer',
+                job: 'Data Scientist',
+                scheduled_at: new Date(Date.now() + 1800000).toISOString(),
+                status: 'active',
+            },
+        ]
+        setTimeout(() => {
+            setSessions(MOCK_SESSIONS)
+            setLoading(false)
+        }, 500) // small delay to show loading state
     }, [])
 
     return (
@@ -27,7 +51,7 @@ export default function SessionsPage() {
             <Navbar />
             <div style={{ padding: '32px 24px', maxWidth: '900px', margin: '0 auto' }}>
                 <div style={{ marginBottom: '24px' }}>
-                    <h1 style={{ fontSize: '24px', fontWeight: 600 }}>Today's Interviews</h1>
+                    <h1 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em', fontWeight: 700, }}>Today's Interviews</h1>
                     <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
                         {new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                     </p>
@@ -39,8 +63,8 @@ export default function SessionsPage() {
                 {!loading && !error && sessions.length === 0 && (
                     <div style={{
                         background: 'var(--bg-surface)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 'var(--radius)',
+                        border: '2px solid var(--border)',
+                        borderRadius: 'var(--radius-lg)',
                         padding: '48px',
                         textAlign: 'center',
                         color: 'var(--text-secondary)',
