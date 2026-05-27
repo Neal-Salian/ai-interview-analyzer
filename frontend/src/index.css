@@ -1,3 +1,5 @@
+@import "tailwindcss";
+
 *,
 *::before,
 *::after {
@@ -7,24 +9,26 @@
 }
 
 :root {
-  --bg: #0f1117;
-  --bg-surface: #1a1d27;
-  --bg-hover: #22263a;
-  --border: #2e3248;
-  --text-primary: #f0f2ff;
-  --text-secondary: #8b90a7;
-  --accent: #7c6ff7;
-  --accent-hover: #9d98f8;
-  --accent-bg: rgba(124, 111, 247, 0.12);
+  --bg: #0e0e0e;
+  --bg-surface: #181a1a;
+  --bg-surface-high: #1e2020;
+  --bg-surface-highest: #242627;
+  --border: #464849;
+  --border-muted: #747676;
+  --text-primary: #e5e5e6;
+  --text-secondary: #aaabab;
+  --accent: #0055ff;
+  --accent-hover: #3467ff;
+  --accent-bg: rgba(0, 85, 255, 0.12);
+  --red: #ff7261;
+  --red-dark: #7e0003;
   --success: #34d399;
   --warning: #fbbf24;
-  --danger: #f87171;
-  --info: #60a5fa;
-  --font: 'Inter', system-ui, -apple-system, sans-serif;
-  --mono: 'JetBrains Mono', ui-monospace, monospace;
-  --radius: 10px;
-  --radius-sm: 6px;
-  --shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  --danger: #ee7d77;
+  --font-heading: 'Space Grotesk', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+  --radius: 0.25rem;
+  --radius-lg: 0.5rem;
 }
 
 body {
