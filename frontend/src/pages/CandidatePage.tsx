@@ -67,7 +67,7 @@ export default function CandidatePage() {
                             onClick={handleSubmit}
                             disabled={!name || !email}
                             style={{
-                                background: 'var(--red)',
+                                background: 'var(--accent)',
                                 color: '#fff',
                                 border: 'none',
                                 borderRadius: 'var(--radius)',

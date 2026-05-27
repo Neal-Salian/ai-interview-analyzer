@@ -242,7 +242,7 @@ export default function LiveDashboard() {
                             <div key={i} style={{
                                 background: 'var(--bg)',
                                 border: '1px solid var(--border)',
-                                borderRadius: 'var(--radius-sm)',
+                                borderRadius: 'var(--radius)',
                                 padding: '12px',
                             }}>
                                 <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '6px' }}>

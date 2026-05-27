@@ -23,14 +23,14 @@ export default function SessionsPage() {
                 candidate: 'Priya Sharma',
                 job: 'Senior Backend Engineer',
                 scheduled_at: new Date().toISOString(),
-                status: 'active',
+                status: 'completed',
             },
             {
                 session_id: 'a1b2c3d4-0002-0002-0002-000000000002',
                 candidate: 'Rahul Mehta',
                 job: 'DevOps Engineer',
                 scheduled_at: new Date(Date.now() - 3600000).toISOString(),
-                status: 'completed',
+                status: 'active',
             },
             {
                 session_id: 'a1b2c3d4-0003-0003-0003-000000000003',
