@@ -20,6 +20,22 @@ const MOCK_QUESTIONS: SuggestedQuestion[] = [
     { id: '2', question_text: 'How did you handle the technical debt you mentioned?', triggered_by: 'technical debt', was_asked: false, created_at: '' },
     { id: '3', question_text: 'What metrics did you use to measure success in that role?', triggered_by: 'success metrics', was_asked: false, created_at: '' },
 ]
+// TODO: remove when WebSocket is live with real session
+const MOCK_EMOTIONS: EmotionFrame[] = [
+    { dominant_emotion: 'neutral', confidence: 72.5, timestamp: new Date(Date.now() - 120000).toISOString() },
+    { dominant_emotion: 'happy', confidence: 85.3, timestamp: new Date(Date.now() - 90000).toISOString() },
+    { dominant_emotion: 'neutral', confidence: 68.1, timestamp: new Date(Date.now() - 60000).toISOString() },
+    { dominant_emotion: 'surprise', confidence: 78.9, timestamp: new Date(Date.now() - 45000).toISOString() },
+    { dominant_emotion: 'happy', confidence: 91.2, timestamp: new Date(Date.now() - 30000).toISOString() },
+    { dominant_emotion: 'neutral', confidence: 74.4, timestamp: new Date(Date.now() - 15000).toISOString() },
+]
+
+const MOCK_TRANSCRIPTS: TranscriptChunk[] = [
+    { text: 'I have been working with Python for over five years, primarily in backend development and distributed systems.', timestamp: new Date(Date.now() - 110000).toISOString() },
+    { text: 'In my last role I led a team of three engineers to migrate our monolith to a microservices architecture.', timestamp: new Date(Date.now() - 80000).toISOString() },
+    { text: 'The biggest challenge was maintaining uptime during the migration — we used a strangler fig pattern to do it incrementally.', timestamp: new Date(Date.now() - 50000).toISOString() },
+    { text: 'We reduced deployment time from two hours down to eight minutes and cut incident rate by about forty percent.', timestamp: new Date(Date.now() - 20000).toISOString() },
+]
 
 export default function LiveDashboard() {
     const { id: sessionId } = useParams<{ id: string }>()
@@ -46,7 +62,17 @@ export default function LiveDashboard() {
         wsRef.current = ws
 
         ws.onopen = () => setConnected(true)
-        ws.onclose = () => setConnected(false)
+        ws.onclose = () => {
+            setConnected(false)
+            // Load mock data if WebSocket closed with no real data
+            setEmotions(prev => prev.length === 0 ? MOCK_EMOTIONS : prev)
+            setTranscripts(prev => prev.length === 0 ? MOCK_TRANSCRIPTS : prev)
+            if (MOCK_EMOTIONS.length) {
+                const last = MOCK_EMOTIONS[MOCK_EMOTIONS.length - 1]
+                setCurrentEmotion(last.dominant_emotion)
+                setCurrentConfidence(last.confidence)
+            }
+        }
 
         ws.onmessage = (event) => {
             const msg: WSMessage = JSON.parse(event.data)
@@ -152,7 +178,7 @@ export default function LiveDashboard() {
                     {/* Emotion chart */}
                     <div style={{ ...cardStyle, flex: 1 }}>
                         <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px', fontFamily: 'var(--font-heading)' }}>
-                            Confidence Over Time
+                            Emotions Over Time
                         </div>
                         {chartData.length === 0 ? (
                             <div style={{ color: 'var(--text-secondary)', fontSize: '13px', textAlign: 'center', paddingTop: '40px' }}>
