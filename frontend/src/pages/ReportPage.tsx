@@ -39,7 +39,7 @@ export default function ReportPage() {
                 {/* Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
                     <div>
-                        <h1 style={{ fontSize: '22px', fontWeight: 600 }}>{r.candidate}</h1>
+                        <h1 style={{ fontSize: '22px', fontWeight: 700, fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}>{r.candidate}</h1>
                         <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
                             {r.date} · {r.duration} · Session {sessionId?.slice(0, 8)}...
                         </p>
@@ -49,9 +49,9 @@ export default function ReportPage() {
                         title="PDF generation coming soon"
                         style={{
                             background: 'var(--bg-surface)',
-                            color: 'var(--text-secondary)',
-                            border: '1px solid var(--border)',
-                            borderRadius: 'var(--radius-sm)',
+                            color: 'var(--red)',
+                            border: '1px solid var(--red)',
+                            borderRadius: 'var(--radius)',
                             padding: '8px 16px',
                             fontSize: '13px',
                             cursor: 'not-allowed',
@@ -93,7 +93,7 @@ export default function ReportPage() {
                     {/* Questions asked */}
                     <div style={cardStyle}>
                         <div style={sectionLabel}>Questions Asked</div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', color: 'var(--accent)', fontFamily: 'var(--font-heading)', fontWeight: 600 }}>
                             {r.questions_asked.map((q, i) => (
                                 <div key={i} style={{
                                     background: 'var(--bg)',
@@ -121,6 +121,7 @@ export default function ReportPage() {
                                     background: 'var(--bg)',
                                     border: '1px solid var(--border)',
                                     borderRadius: 'var(--radius-sm)',
+                                    borderLeft: '2px solid var(--accent)',
                                     padding: '12px',
                                     fontSize: '13px',
                                     lineHeight: 1.6,
@@ -141,8 +142,8 @@ export default function ReportPage() {
 
 const cardStyle: React.CSSProperties = {
     background: 'var(--bg-surface)',
-    border: '1px solid var(--border)',
-    borderRadius: 'var(--radius)',
+    border: '2px solid var(--border)',
+    borderRadius: 'var(--radius-lg)',
     padding: '24px',
 }
 
@@ -150,6 +151,8 @@ const sectionLabel: React.CSSProperties = {
     fontSize: '12px',
     color: 'var(--text-secondary)',
     textTransform: 'uppercase',
-    letterSpacing: '0.08em',
+    letterSpacing: '0.05em',
     marginBottom: '16px',
+    fontFamily: 'var(--font-heading)',
+    fontWeight: 500,
 }

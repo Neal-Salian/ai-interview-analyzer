@@ -89,11 +89,11 @@ export default function SessionsPage() {
                                 justifyContent: 'space-between',
                                 transition: 'border-color 0.2s',
                             }}
-                            onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
+                            onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--border-strong)')}
                             onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
                         >
                             <div>
-                                <div style={{ fontWeight: 500, fontSize: '15px' }}>
+                                <div style={{ fontWeight: 600, fontSize: '15px', fontFamily: 'var(--font-heading)' }}>
                                     {session.candidate ?? 'Unknown Candidate'}
                                 </div>
                                 <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
@@ -117,10 +117,11 @@ export default function SessionsPage() {
                                         onClick={e => { e.stopPropagation(); navigate(`/sessions/${session.session_id}/report`) }}
                                         style={{
                                             marginLeft: '8px',
-                                            background: 'var(--accent-bg)',
-                                            color: 'var(--accent)',
-                                            border: '1px solid var(--accent)',
-                                            borderRadius: 'var(--radius-sm)',
+                                            background: 'var(--red)',
+                                            color: '#ffffff',
+                                            border: '1px solid var(--red)',
+                                            borderRadius: 'var(--radius)',
+                                            fontFamily: 'var(--font-heading)',
                                             padding: '4px 12px',
                                             fontSize: '12px',
                                         }}

@@ -107,7 +107,7 @@ export default function LiveDashboard() {
                 {/* Header */}
                 <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div>
-                        <h1 style={{ fontSize: '20px', fontWeight: 600 }}>Live Interview</h1>
+                        <h1 style={{ fontSize: '20px', fontWeight: 700, fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}>Live Interview</h1>
                         <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Session {sessionId?.slice(0, 8)}...</p>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -128,7 +128,7 @@ export default function LiveDashboard() {
 
                     {/* Current emotion card */}
                     <div style={cardStyle}>
-                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px' }}>
+                        <div style={{ fontSize: '14px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', fontWeight: 700, fontFamily: 'var(--font-heading)', }}>
                             Current Emotion
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -151,7 +151,7 @@ export default function LiveDashboard() {
 
                     {/* Emotion chart */}
                     <div style={{ ...cardStyle, flex: 1 }}>
-                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '16px' }}>
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px', fontFamily: 'var(--font-heading)' }}>
                             Confidence Over Time
                         </div>
                         {chartData.length === 0 ? (
@@ -167,7 +167,7 @@ export default function LiveDashboard() {
                                         contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '12px' }}
                                         formatter={(val, _name, props) => [`${val}%`, props.payload.emotion]}
                                     />
-                                    <Line type="monotone" dataKey="confidence" stroke="var(--accent)" strokeWidth={2} dot={false} />
+                                    <Line type="monotone" dataKey="confidence" stroke="#0055ff" strokeWidth={2} dot={false} />
                                 </LineChart>
                             </ResponsiveContainer>
                         )}
@@ -175,7 +175,7 @@ export default function LiveDashboard() {
 
                     {/* Suggested questions */}
                     <div style={cardStyle}>
-                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px' }}>
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', fontFamily: 'var(--font-heading)' }}>
                             Suggested Questions
                             <span style={{ marginLeft: '8px', color: 'var(--text-secondary)', fontStyle: 'italic', textTransform: 'none', fontSize: '11px' }}>(mock — pipeline coming soon)</span>
                         </div>
@@ -183,8 +183,8 @@ export default function LiveDashboard() {
                             {questions.map(q => (
                                 <div key={q.id} style={{
                                     background: 'var(--bg)',
-                                    border: `1px solid ${q.was_asked ? 'var(--border)' : 'var(--accent)'}`,
-                                    borderRadius: 'var(--radius-sm)',
+                                    border: `2px solid ${q.was_asked ? 'var(--border)' : 'var(--accent)'}`,
+                                    borderRadius: 'var(--radius)',
                                     padding: '12px',
                                     opacity: q.was_asked ? 0.5 : 1,
                                     display: 'flex',
@@ -198,10 +198,12 @@ export default function LiveDashboard() {
                                             onClick={() => markAsked(q.id)}
                                             style={{
                                                 flexShrink: 0,
-                                                background: 'var(--accent-bg)',
-                                                color: 'var(--accent)',
-                                                border: '1px solid var(--accent)',
-                                                borderRadius: 'var(--radius-sm)',
+                                                background: 'var(--accent)',
+                                                color: '#ffffff',
+                                                border: 'none',
+                                                borderRadius: 'var(--radius)',
+                                                fontFamily: 'var(--font-heading)',
+                                                fontWeight: 500,
                                                 padding: '4px 10px',
                                                 fontSize: '12px',
                                                 whiteSpace: 'nowrap',
@@ -218,7 +220,7 @@ export default function LiveDashboard() {
 
                 {/* Right column — transcript */}
                 <div style={cardStyle}>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px' }}>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', fontFamily: 'var(--font-heading)' }}>
                         Live Transcript
                     </div>
                     <div
@@ -259,7 +261,7 @@ export default function LiveDashboard() {
 
 const cardStyle: React.CSSProperties = {
     background: 'var(--bg-surface)',
-    border: '1px solid var(--border)',
-    borderRadius: 'var(--radius)',
+    border: '2px solid var(--border)',
+    borderRadius: 'var(--radius-lg)',
     padding: '20px',
 }

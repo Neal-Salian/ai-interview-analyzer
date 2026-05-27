@@ -37,13 +37,13 @@ export default function LoginPage() {
         }}>
             <div style={{
                 background: 'var(--bg-surface)',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius)',
+                border: '2px solid var(--border)',
+                borderRadius: 'var(--radius-lg)',
                 padding: '40px',
                 width: '380px',
                 boxShadow: 'var(--shadow)',
             }}>
-                <h2 style={{ marginBottom: '8px', fontSize: '22px' }}>Welcome back</h2>
+                <h2 style={{ marginBottom: '8px', fontSize: '22px', fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em', fontWeight: 700, }}>Welcome back</h2>
                 <p style={{ color: 'var(--text-secondary)', marginBottom: '32px', fontSize: '13px' }}>
                     Sign in to access the recruiter dashboard
                 </p>
@@ -84,12 +84,13 @@ export default function LoginPage() {
                         disabled={loading}
                         style={{
                             background: 'var(--accent)',
-                            color: '#fff',
+                            color: '#000',
                             border: 'none',
-                            borderRadius: 'var(--radius-sm)',
+                            borderRadius: 'var(--radius)',
+                            fontFamily: 'var(--font-heading)',
+                            fontWeight: 600,
                             padding: '12px',
                             fontSize: '14px',
-                            fontWeight: 500,
                             opacity: loading ? 0.7 : 1,
                             marginTop: '8px',
                         }}
@@ -104,11 +105,12 @@ export default function LoginPage() {
 
 const inputStyle: React.CSSProperties = {
     width: '100%',
-    background: 'var(--bg)',
+    background: 'var(--bg-surface-high)',
     border: '1px solid var(--border)',
-    borderRadius: 'var(--radius-sm)',
+    borderRadius: 'var(--radius)',
     padding: '10px 14px',
     color: 'var(--text-primary)',
     fontSize: '14px',
     outline: 'none',
+    fontFamily: 'var(--font-body)',
 }

@@ -20,15 +20,15 @@ export default function CandidatePage() {
         <div>
             <Navbar />
             <div style={{ padding: '40px 24px', maxWidth: '480px', margin: '0 auto' }}>
-                <h1 style={{ fontSize: '22px', fontWeight: 600, marginBottom: '8px' }}>Register Candidate</h1>
+                <h1 style={{ fontSize: '22px', fontWeight: 700, fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em', marginBottom: '8px' }}>Register Candidate</h1>
                 <p style={{ color: 'var(--text-secondary)', marginBottom: '32px', fontSize: '13px' }}>
                     Add a candidate before their scheduled interview.
                 </p>
 
                 <div style={{
                     background: 'var(--bg-surface)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius)',
+                    border: '2px solid var(--border)',
+                    borderRadius: 'var(--radius-lg)',
                     padding: '32px',
                 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -67,13 +67,14 @@ export default function CandidatePage() {
                             onClick={handleSubmit}
                             disabled={!name || !email}
                             style={{
-                                background: 'var(--accent)',
+                                background: 'var(--red)',
                                 color: '#fff',
                                 border: 'none',
-                                borderRadius: 'var(--radius-sm)',
+                                borderRadius: 'var(--radius)',
+                                fontFamily: 'var(--font-heading)',
+                                fontWeight: 600,
                                 padding: '12px',
                                 fontSize: '14px',
-                                fontWeight: 500,
                                 opacity: (!name || !email) ? 0.5 : 1,
                                 marginTop: '8px',
                             }}
@@ -90,17 +91,22 @@ export default function CandidatePage() {
 const labelStyle: React.CSSProperties = {
     display: 'block',
     marginBottom: '6px',
-    fontSize: '13px',
+    fontSize: '12px',
     color: 'var(--text-secondary)',
+    fontFamily: 'var(--font-heading)',
+    fontWeight: 500,
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
 }
 
 const inputStyle: React.CSSProperties = {
     width: '100%',
-    background: 'var(--bg)',
+    background: 'var(--bg-surface-high)',
     border: '1px solid var(--border)',
-    borderRadius: 'var(--radius-sm)',
+    borderRadius: 'var(--radius)',
     padding: '10px 14px',
     color: 'var(--text-primary)',
     fontSize: '14px',
     outline: 'none',
+    fontFamily: 'var(--font-body)',
 }
