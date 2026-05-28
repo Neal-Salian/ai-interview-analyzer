@@ -195,6 +195,7 @@ ai-interview-analyzer/
 | Table | Purpose |
 |---|---|
 | `candidates` | Candidate profiles linked to sessions |
+| `jobs` | job linked to candidate |
 | `sessions` | Interview sessions with Zoom meeting ID and status |
 | `emotion_frames` | Per-frame emotion scores from DeepFace |
 | `transcript_chunks` | 5-second Whisper transcript segments |
