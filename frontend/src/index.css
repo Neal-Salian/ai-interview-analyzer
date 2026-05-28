@@ -31,6 +31,23 @@
   --radius-lg: 0.5rem;
 }
 
+/* Light Theme Overrides */
+:root.light {
+  --bg: #f9fafb;
+  /* Light gray background */
+  --bg-surface: #ffffff;
+  /* Pure white cards */
+  --bg-hover: #f3f4f6;
+  --border: #e5e7eb;
+  --text-primary: #111827;
+  /* Near black text */
+  --text-secondary: #6b7280;
+  /* Gray text */
+
+  /* We keep the primary accent and status colors exactly the same 
+     so the branding and emotion badges remain consistent! */
+}
+
 body {
   font-family: var(--font-body);
   background: var(--bg);

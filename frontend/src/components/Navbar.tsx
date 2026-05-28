@@ -1,8 +1,10 @@
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useTheme } from '../context/ThemeContext'
 
 export default function Navbar() {
     const { logout } = useAuth()
+    const { theme, toggleTheme } = useTheme()
     const navigate = useNavigate()
 
     const handleLogout = () => {
@@ -59,6 +61,25 @@ export default function Navbar() {
                     onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--red)')}
                 >
                     Logout
+                </button>
+                <button
+                    onClick={toggleTheme}
+                    style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--text-secondary)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '8px',
+                        borderRadius: '4px'
+                    }}
+                    aria-label="Toggle theme"
+                >
+                    <span className="material-symbols-outlined">
+                        {theme === 'dark' ? 'light_mode' : 'dark_mode'}
+                    </span>
                 </button>
             </div>
         </nav>
