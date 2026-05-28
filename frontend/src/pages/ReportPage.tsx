@@ -59,7 +59,7 @@ export default function ReportPage() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                         <button onClick={() => navigate('/sessions')} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: 0 }}>
-                            <span className="material-symbols-outlined">arrow_back</span>
+                            <span className="material-symbols-outlined"> ← </span>
                         </button>
                         <h1 style={{ fontSize: '24px', fontWeight: 600, margin: 0 }}>{candidateName} - Session Report</h1>
                     </div>
