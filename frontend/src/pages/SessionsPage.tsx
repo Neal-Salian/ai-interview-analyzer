@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 
@@ -144,8 +144,8 @@ export default function SessionsPage() {
                                             border: '1px solid rgba(255, 184, 106, 0.3)',
                                             padding: '4px 12px', borderRadius: '999px'
                                         }}>
-                                            <div style={{ width: '6px', height: '6px', backgroundColor: 'var(--warning)', borderRadius: '50%' }} />
-                                            <span style={{ color: 'var(--warning)', fontSize: '11px', fontWeight: 700, letterSpacing: '0.05em' }}>LIVE</span>
+                                            <div style={{ width: '6px', height: '6px', backgroundColor: 'var(--red)', borderRadius: '50%' }} />
+                                            <span style={{ color: 'var(--red)', fontSize: '11px', fontWeight: 700, letterSpacing: '0.05em' }}>LIVE</span>
                                         </div>
                                     ) : (
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
