@@ -41,7 +41,7 @@ export default function LiveDashboard() {
     const { id: sessionId } = useParams<{ id: string }>()
     const [emotions, setEmotions] = useState<EmotionFrame[]>([])
     const [transcripts, setTranscripts] = useState<TranscriptChunk[]>([])
-    const [questions, setQuestions] = useState<SuggestedQuestion[]>(MOCK_QUESTIONS)
+    const [questions, setQuestions] = useState<SuggestedQuestion[]>([])
     const [currentEmotion, setCurrentEmotion] = useState<string>('—')
     const [currentConfidence, setCurrentConfidence] = useState<number>(0)
     const [connected, setConnected] = useState(false)
@@ -82,6 +82,7 @@ export default function LiveDashboard() {
             if (msg.type === 'history') {
                 if (msg.emotions) setEmotions(msg.emotions)
                 if (msg.transcripts) setTranscripts(msg.transcripts)
+                if (msg.questions) setQuestions(msg.questions)
                 if (msg.emotions?.length) {
                     const last = msg.emotions[msg.emotions.length - 1]
                     setCurrentEmotion(last.dominant_emotion)
@@ -107,6 +108,13 @@ export default function LiveDashboard() {
                 }
                 setTranscripts(prev => [...prev, chunk])
             }
+            if (msg.type === 'question' && msg.question) {
+                setQuestions(prev => {
+                    const exists = prev.find(q => q.id === msg.question!.id)
+                    if (exists) return prev
+                    return [...prev, msg.question!]
+                })
+            }
         }
 
         return () => ws.close()
@@ -119,8 +127,13 @@ export default function LiveDashboard() {
         }
     }, [transcripts])
 
-    const markAsked = (id: string) => {
+    const markAsked = async (id: string) => {
         setQuestions(prev => prev.map(q => q.id === id ? { ...q, was_asked: true } : q))
+        try {
+            await fetch(`/api/questions/${id}/asked`, { method: 'PATCH' })
+        } catch (e) {
+            console.error('Failed to mark question as asked', e)
+        }
     }
 
     const emotionColor = EMOTION_COLOR[currentEmotion] ?? 'var(--text-secondary)'
@@ -203,7 +216,7 @@ export default function LiveDashboard() {
                     <div style={cardStyle}>
                         <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', fontFamily: 'var(--font-heading)' }}>
                             Suggested Questions
-                            <span style={{ marginLeft: '8px', color: 'var(--text-secondary)', fontStyle: 'italic', textTransform: 'none', fontSize: '11px' }}>(mock — pipeline coming soon)</span>
+                            <span style={{ marginLeft: '8px', color: 'var(--text-secondary)', fontStyle: 'italic', textTransform: 'none', fontSize: '11px' }}></span>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                             {questions.map(q => (
