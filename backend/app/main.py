@@ -2,11 +2,10 @@ import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import zoom_webhook, jobs, sessions
+from app.api.routes import zoom_webhook, jobs, sessions, questions  
 from app.api.websocket import connect_recruiter, disconnect_recruiter
-from app.db.crud import get_active_sessions, get_session_history
+from app.db.crud import get_active_sessions, get_session_history, get_questions_for_session
 from app.ml.stream.rtmp_consumer import consume_stream
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -36,6 +35,7 @@ app.add_middleware(
 app.include_router(zoom_webhook.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(sessions.router, prefix="/api")
+app.include_router(questions.router, prefix="/api")
 
 
 @app.get("/health")
@@ -49,11 +49,13 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
     try:
         try:
             history = await asyncio.to_thread(get_session_history, session_id)
-            if history["emotions"] or history["transcripts"]:
+            questions_history = await asyncio.to_thread(get_questions_for_session, session_id)
+            if history["emotions"] or history["transcripts"] or questions_history:
                 await websocket.send_json({
                     "type": "history",
                     "emotions": history["emotions"],
-                    "transcripts": history["transcripts"]
+                    "transcripts": history["transcripts"],
+                    "questions": questions_history
                 })
                 print(f"[WS] Replayed {len(history['emotions'])} emotions, "
                       f"{len(history['transcripts'])} transcripts to session {session_id}")
