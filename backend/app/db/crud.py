@@ -205,3 +205,75 @@ def write_session_summary(
     db.commit()
     db.refresh(session)
     return session
+
+    # ── Questions ─────────────────────────────────────────────────────────────────
+
+def save_question(session_id: str, question_text: str, triggered_by: str) -> str:
+    """
+    Saves a single suggested question to the DB.
+    Returns the question UUID so it can be broadcast over WebSocket.
+    """
+    db = SessionLocal()
+    try:
+        from app.db.models import SuggestedQuestion
+        question_id = uuid.uuid4()
+        q = SuggestedQuestion(
+            id=question_id,
+            session_id=session_id,
+            question_text=question_text,
+            triggered_by=triggered_by,
+            was_asked=False,
+            created_at=datetime.datetime.utcnow()
+        )
+        db.add(q)
+        db.commit()
+        return str(question_id)
+    finally:
+        db.close()
+
+
+def get_questions_for_session(session_id: str) -> list:
+    """
+    Returns all suggested questions for a session ordered by creation time.
+    """
+    db = SessionLocal()
+    try:
+        from app.db.models import SuggestedQuestion
+        questions = (
+            db.query(SuggestedQuestion)
+            .filter(SuggestedQuestion.session_id == session_id)
+            .order_by(SuggestedQuestion.created_at.asc())
+            .all()
+        )
+        return [
+            {
+                "id": str(q.id),
+                "question_text": q.question_text,
+                "triggered_by": q.triggered_by,
+                "was_asked": q.was_asked,
+                "created_at": q.created_at.isoformat()
+            }
+            for q in questions
+        ]
+    finally:
+        db.close()
+
+
+def mark_question_asked(question_id: str) -> bool:
+    """
+    Flips was_asked to True for a question.
+    Returns True if found and updated, False if not found.
+    """
+    db = SessionLocal()
+    try:
+        from app.db.models import SuggestedQuestion
+        q = db.query(SuggestedQuestion).filter(
+            SuggestedQuestion.id == question_id
+        ).first()
+        if not q:
+            return False
+        q.was_asked = True
+        db.commit()
+        return True
+    finally:
+        db.close()
