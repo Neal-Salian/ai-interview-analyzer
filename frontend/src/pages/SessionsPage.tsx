@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import client from '../api/client'
+import { useTheme } from '../context/ThemeContext';
 
 // Extended session type for the new UI data requirements
 interface EnhancedSession {
@@ -20,8 +21,10 @@ export default function SessionsPage() {
     const [selectedCandidate, setSelectedCandidate] = useState('')
     const [creating, setCreating] = useState(false)
     const [sessions, setSessions] = useState<EnhancedSession[]>([]);
+    const [scheduledAt, setScheduledAt] = useState('')
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
+    const { theme } = useTheme();
 
     useEffect(() => {
         const fetchSessions = async () => {
@@ -51,7 +54,7 @@ export default function SessionsPage() {
         try {
             await client.post('/sessions', {
                 candidate_id: selectedCandidate,
-                scheduled_at: new Date().toISOString()
+                scheduled_at: scheduledAt || new Date().toISOString()
             })
             setShowNewSession(false)
             setSelectedCandidate('')
@@ -300,11 +303,34 @@ export default function SessionsPage() {
                                 <option key={c.id} value={c.id}>{c.name}</option>
                             ))}
                         </select>
+                        <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>
+                            Schedule Date & Time
+                        </label>
+                        <input
+                            type="datetime-local"
+                            value={scheduledAt}
+                            onChange={e => setScheduledAt(e.target.value)}
+                            style={{
+                                width: '100%',
+                                background: 'var(--bg)',
+                                border: '1px solid var(--border)',
+                                borderRadius: '6px',
+                                padding: '10px',
+                                color: 'var(--text-primary)',
+                                fontSize: '14px',
+                                marginBottom: '24px',
+                                colorScheme: theme
+                            }}
+                        />
                         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
                             <button
-                                onClick={() => setShowNewSession(false)}
+                                onClick={() => {
+                                    setShowNewSession(false)
+                                    setSelectedCandidate('')
+                                    setScheduledAt('')
+                                }}
                                 style={{
-                                    background: 'transparent', border: '1px solid var(--border)',
+                                    background: 'var(--bg)', border: '1px solid var(--border)',
                                     borderRadius: '6px', padding: '8px 16px',
                                     color: 'var(--text-secondary)', cursor: 'pointer'
                                 }}
