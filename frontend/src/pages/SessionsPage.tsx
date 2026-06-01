@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
+import client from '../api/client'
 
 // Extended session type for the new UI data requirements
 interface EnhancedSession {
-    session_id: string;
-    candidate: string;
-    job: string;
-    scheduled_at: string;
-    status: 'active' | 'completed';
-    metrics?: { sentiment: number; talkCandidate: number; talkInterviewer: number };
-    tags?: string[];
+    session_id: string
+    candidate: string | null
+    job: string | null
+    scheduled_at: string | null
+    status: 'active' | 'completed' | 'scheduled'
+    metrics?: { sentiment: number; talkCandidate: number; talkInterviewer: number }
+    tags?: string[]
 }
 
 export default function SessionsPage() {
@@ -19,31 +20,18 @@ export default function SessionsPage() {
     const navigate = useNavigate();
 
     useEffect(() => {
-        // Mock data perfectly matching the screenshot
-        const MOCK_SESSIONS: EnhancedSession[] = [
-            {
-                session_id: 'sess_1',
-                candidate: 'Elena Rostova',
-                job: 'Senior Machine Learning Engineer',
-                scheduled_at: '10:00 AM - 11:30 AM',
-                status: 'active',
-                metrics: { sentiment: 75, talkCandidate: 42, talkInterviewer: 58 }
-            },
-            {
-                session_id: 'sess_2',
-                candidate: 'Priya Sharma',
-                job: 'Product Manager, Platform',
-                scheduled_at: '08:30 AM - 09:15 AM',
-                status: 'completed',
-                tags: ['Confident', 'Analytical']
+        const fetchSessions = async () => {
+            try {
+                const res = await client.get('/sessions/today')
+                setSessions(res.data)
+            } catch (err) {
+                console.error('Failed to fetch sessions', err)
+            } finally {
+                setLoading(false)
             }
-        ];
-
-        setTimeout(() => {
-            setSessions(MOCK_SESSIONS);
-            setLoading(false);
-        }, 400);
-    }, []);
+        }
+        fetchSessions()
+    }, [])
 
     const currentDate = new Date().toLocaleDateString('en-US', {
         weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
