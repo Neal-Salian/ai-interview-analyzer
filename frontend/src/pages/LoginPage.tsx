@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
+
 export default function LoginPage() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
@@ -14,14 +15,16 @@ export default function LoginPage() {
         setError('')
         setLoading(true)
         try {
-            // Auth route not built yet — mock token for development
-            // Replace with: const res = await client.post('/auth/login', { email, password })
-            if (email === 'admin@demo.com' && password === 'password') {
-                login('mock-jwt-token-dev')
-                navigate('/sessions')
-            } else {
-                setError('Invalid credentials. Use admin@demo.com / password')
-            }
+            const params = new URLSearchParams()
+            params.append('username', email)
+            params.append('password', password)
+            const res = await client.post('/auth/login', params, {
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+            })
+            login(res.data.access_token)
+            navigate('/sessions')
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Login failed. Please try again.')
         } finally {
             setLoading(false)
         }
