@@ -15,6 +15,10 @@ interface EnhancedSession {
 }
 
 export default function SessionsPage() {
+    const [showNewSession, setShowNewSession] = useState(false)
+    const [candidates, setCandidates] = useState<{ id: string, name: string }[]>([])
+    const [selectedCandidate, setSelectedCandidate] = useState('')
+    const [creating, setCreating] = useState(false)
     const [sessions, setSessions] = useState<EnhancedSession[]>([]);
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
@@ -32,6 +36,33 @@ export default function SessionsPage() {
         }
         fetchSessions()
     }, [])
+    const fetchCandidates = async () => {
+        try {
+            const res = await client.get('/candidates')
+            setCandidates(res.data)
+        } catch (err) {
+            console.error('Failed to fetch candidates', err)
+        }
+    }
+
+    const handleNewSession = async () => {
+        if (!selectedCandidate) return
+        setCreating(true)
+        try {
+            await client.post('/sessions', {
+                candidate_id: selectedCandidate,
+                scheduled_at: new Date().toISOString()
+            })
+            setShowNewSession(false)
+            setSelectedCandidate('')
+            const res = await client.get('/sessions/today')
+            setSessions(res.data)
+        } catch (err) {
+            console.error('Failed to create session', err)
+        } finally {
+            setCreating(false)
+        }
+    }
 
     const currentDate = new Date().toLocaleDateString('en-US', {
         weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
@@ -71,13 +102,18 @@ export default function SessionsPage() {
                             <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>refresh</span>
                         </button>
 
-                        <button style={{
-                            display: 'flex', alignItems: 'center', gap: '0.5rem',
-                            backgroundColor: 'var(--accent)', color: '#ffffff',
-                            border: 'none', padding: '0 1rem', height: '40px',
-                            borderRadius: 'var(--radius-sm, 6px)', fontWeight: 500,
-                            fontSize: '13px', cursor: 'pointer'
-                        }}>
+                        <button
+                            onClick={() => {
+                                fetchCandidates()
+                                setShowNewSession(true)
+                            }}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                backgroundColor: 'var(--accent)', color: '#ffffff',
+                                border: 'none', padding: '0 1rem', height: '40px',
+                                borderRadius: 'var(--radius-sm, 6px)', fontWeight: 500,
+                                fontSize: '13px', cursor: 'pointer'
+                            }}>
                             <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add</span>
                             New Session
                         </button>
@@ -233,6 +269,64 @@ export default function SessionsPage() {
                     </div>
                 )}
             </main>
+            {showNewSession && (
+                <div style={{
+                    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    zIndex: 200
+                }}>
+                    <div style={{
+                        background: 'var(--bg-surface)', border: '1px solid var(--border)',
+                        borderRadius: '10px', padding: '32px', width: '400px'
+                    }}>
+                        <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '24px' }}>
+                            New Session
+                        </h2>
+                        <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>
+                            Select Candidate
+                        </label>
+                        <select
+                            value={selectedCandidate}
+                            onChange={e => setSelectedCandidate(e.target.value)}
+                            style={{
+                                width: '100%', background: 'var(--bg)',
+                                border: '1px solid var(--border)', borderRadius: '6px',
+                                padding: '10px', color: 'var(--text-primary)',
+                                fontSize: '14px', marginBottom: '24px'
+                            }}
+                        >
+                            <option value="">Choose a candidate...</option>
+                            {candidates.map(c => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                        </select>
+                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                            <button
+                                onClick={() => setShowNewSession(false)}
+                                style={{
+                                    background: 'transparent', border: '1px solid var(--border)',
+                                    borderRadius: '6px', padding: '8px 16px',
+                                    color: 'var(--text-secondary)', cursor: 'pointer'
+                                }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleNewSession}
+                                disabled={!selectedCandidate || creating}
+                                style={{
+                                    background: 'var(--accent)', border: 'none',
+                                    borderRadius: '6px', padding: '8px 16px',
+                                    color: '#fff', cursor: 'pointer', fontWeight: 600,
+                                    opacity: !selectedCandidate || creating ? 0.5 : 1
+                                }}
+                            >
+                                {creating ? 'Creating...' : 'Create Session'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
