@@ -2,7 +2,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import zoom_webhook, jobs, sessions, questions  
+from app.api.routes import zoom_webhook, jobs, sessions, questions, auth
 from app.api.websocket import connect_recruiter, disconnect_recruiter
 from app.db.crud import get_active_sessions, get_session_history, get_questions_for_session
 from app.ml.stream.rtmp_consumer import consume_stream
@@ -36,6 +36,7 @@ app.include_router(zoom_webhook.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(sessions.router, prefix="/api")
 app.include_router(questions.router, prefix="/api")
+app.include_router(auth.router, prefix="/api")
 
 
 @app.get("/health")
