@@ -10,6 +10,8 @@ from app.db.models import (
     Session as InterviewSession,
     Candidate,
 )
+from sqlalchemy.orm import joinedload
+
 
 
 # ── Stream pipeline writes ────────────────────────────────────────────────────
@@ -79,6 +81,10 @@ def get_todays_sessions():
     try:
         return (
             db.query(InterviewSession)
+            .options(
+                joinedload(InterviewSession.candidate),
+                joinedload(InterviewSession.job)
+            )
             .order_by(InterviewSession.started_at.desc())
             .all()
         )
