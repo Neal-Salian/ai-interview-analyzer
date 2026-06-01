@@ -2,8 +2,10 @@ import logging
 from fastapi import APIRouter, HTTPException
 from app.db.crud import get_questions_for_session, mark_question_asked
 
-router =APIRouter()
-logger = logging.getlogger(__name__)
+router = APIRouter()
+logger = logging.getLogger(__name__)  
+
+
 
 @router.get("/questions/{session_id}")
 def get_questions(session_id: str):
@@ -15,7 +17,7 @@ def get_questions(session_id: str):
         questions = get_questions_for_session(session_id)
         return questions
     except Exception as e:
-        logger.error(f"[questions] failed to fetch for session {session_id: {e}}")
+        logger.error(f"[questions] failed to fetch for session {session_id}: {e}")
         raise HTTPException(status_code=500, detail="failed to fetch questions")
 
 
@@ -30,5 +32,3 @@ def mark_asked(question_id: str):
     if not updated:
         raise HTTPException(status_code=404, detail="Question not found")
     return {"status": "updated", "question_id": question_id}
-    
-        
