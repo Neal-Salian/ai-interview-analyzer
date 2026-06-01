@@ -1,12 +1,10 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session as DBSession
-from app.db.database import get_db
+from fastapi import APIRouter
 from app.db.crud import get_todays_sessions
 
 router = APIRouter()
 
 @router.get("/sessions/today")
-def todays_sessions(db: DBSession = Depends(get_db)):
+def todays_sessions():
     sessions = get_todays_sessions()
     return [
         {
