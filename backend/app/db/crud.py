@@ -77,15 +77,11 @@ def get_job(job_id: str):
 def get_todays_sessions():
     db = SessionLocal()
     try:
-        today = datetime.date.today()
-        return db.query(InterviewSession).filter(
-            InterviewSession.scheduled_at >= datetime.datetime.combine(
-                today, datetime.time.min
-            ),
-            InterviewSession.scheduled_at <= datetime.datetime.combine(
-                today, datetime.time.max
-            )
-        ).all()
+        return (
+            db.query(InterviewSession)
+            .order_by(InterviewSession.started_at.desc())
+            .all()
+        )
     finally:
         db.close()
 
