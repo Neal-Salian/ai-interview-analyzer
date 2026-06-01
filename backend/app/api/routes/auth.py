@@ -8,7 +8,7 @@ from app.db.models import Recruiter
 from app.core.security import verify_password, create_access_token
 
 router = APIRouter()
-loggger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 @router.post("/auth/login")
 def login(
