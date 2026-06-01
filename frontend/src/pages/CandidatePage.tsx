@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
+import client from '../api/client'
 
 export default function CandidatePage() {
     const [name, setName] = useState('')
@@ -9,11 +10,14 @@ export default function CandidatePage() {
     const navigate = useNavigate()
 
     const handleSubmit = async () => {
-        // Real endpoint not built yet — mock success
-        // Replace with: await client.post('/candidates', { name, email })
         if (!name || !email) return
-        setStatus('success')
-        setTimeout(() => navigate('/sessions'), 1500)
+        try {
+            await client.post('/candidates', { name, email })
+            setStatus('success')
+            setTimeout(() => navigate('/sessions'), 1500)
+        } catch (err: any) {
+            setStatus('error')
+        }
     }
 
     return (
