@@ -51,7 +51,7 @@ class EmotionFrame(Base):
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
     dominant_emotion = Column(String)
     confidence = Column(Float)
-    session = relationship("Session", back_populates="emotion_frames")  # ← add
+    session = relationship("Session", back_populates="emotion_frames")  
 
 
 class TranscriptChunk(Base):
@@ -60,7 +60,7 @@ class TranscriptChunk(Base):
     session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"))
     text = Column(Text)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
-    session = relationship("Session", back_populates="transcript_chunks")  # ← add
+    session = relationship("Session", back_populates="transcript_chunks")  
 
 
 class SuggestedQuestion(Base):
@@ -71,4 +71,13 @@ class SuggestedQuestion(Base):
     triggered_by = Column(Text)
     was_asked = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    session = relationship("Session", back_populates="suggested_questions")  # ← add
+    session = relationship("Session", back_populates="suggested_questions")  
+
+
+class Recruiter(Base):
+    __tablename__ = "recruiters"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email = Column(String, unique=True, nullable=False, index=True)
+    hashed_password = Column(String, nullable=False)
+    full_name = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
