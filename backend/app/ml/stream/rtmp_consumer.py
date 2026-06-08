@@ -5,6 +5,7 @@ import logging
 from app.ml.emotion.detector import analyze_frame
 from app.ml.speech.transcriber import transcribe_chunk
 from app.ml.llm.question_generator import generate_analysis
+from app.ml.nlp.scorer import score_sentiment
 from app.db.crud import save_emotion, save_transcript, save_question
 from app.api.websocket import broadcast
 
@@ -15,7 +16,8 @@ logger = logging.getLogger(__name__)
 # 2 = call every 3rd chunk (lighter on CPU during long interviews)
 LLM_EVERY_N_CHUNKS = 0
 
-async def consume_stream(session_id: str, rtmp_url: str):
+
+async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
     logger.info(f"[CONSUMER] Opening stream: {rtmp_url}")
 
     try:
@@ -80,6 +82,23 @@ async def consume_stream(session_id: str, rtmp_url: str):
                     # Save transcript to DB
                     await asyncio.to_thread(save_transcript, session_id, transcript)
 
+                    # Score sentiment on this chunk and broadcast
+                    try:
+                        sentiment = await asyncio.to_thread(
+                            score_sentiment, transcript
+                        )
+                        await broadcast(session_id, {
+                            "type": "sentiment",
+                            "label": sentiment["label"],
+                            "score": sentiment["score"],
+                        })
+                        logger.debug(
+                            f"[SENTIMENT] {sentiment['label']} "
+                            f"({sentiment['score']})"
+                        )
+                    except Exception as e:
+                        logger.warning(f"[SENTIMENT ERROR] {e}")
+
                     # Broadcast transcript to dashboard
                     await broadcast(session_id, {
                         "type": "transcript",
@@ -95,7 +114,7 @@ async def consume_stream(session_id: str, rtmp_url: str):
                             _generate_and_broadcast_questions(
                                 session_id=session_id,
                                 transcript=transcript,
-                                job_id="",  # wire to session.job_id when candidates route is built
+                                job_id=job_id,
                             )
                         )
 
@@ -161,8 +180,7 @@ async def _generate_and_broadcast_questions(
 
             logger.info(f"[QUESTION] [{q['triggered_by']}] {q['text'][:60]}")
 
-        # Log STAR feedback and confidence score but don't broadcast
-        # — these will be used in the session report
+        # Log STAR feedback and confidence score — used in session report
         if result.get("star_feedback"):
             logger.info(f"[STAR] {result['star_feedback']}")
         if result.get("confidence_score"):
