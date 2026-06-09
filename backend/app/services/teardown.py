@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from sqlalchemy.orm import Session as DBSession
 
@@ -14,7 +15,7 @@ async def teardown_session(session_id: str, db: DBSession) -> None:
       1. Cancel the RTMP consumer task and wait for any in-flight
          Tier 2 tasks to finish cleanly (via registry).
       2. Stamp ended_at and flip status → completed in the DB.
-      3. [Day 2-3] LLM session summary call will be wired in here.
+      3. Run behavioral metric aggregator and store results.
 
     session_id is a UUID string, matching the rest of the codebase.
     db is injected from the webhook route so we share the same
@@ -48,7 +49,21 @@ async def teardown_session(session_id: str, db: DBSession) -> None:
         f"at {updated.ended_at}"
     )
 
-    # Step 3 — LLM session summary (Day 2-3, uncomment when ready)
-    # if session_state:
-    #     summary = await generate_session_summary(session_state.full_transcript)
-    #     crud.write_session_summary(db, session_id, summary)
+    # Step 3 — Run behavioral metrics aggregator
+    # Builds a SessionContext from all session data, runs all enabled
+    # metric plugins, and stores the results in session_summary JSONB.
+    try:
+        from app.ml.analysis.aggregator import build_session_context, run_all_metrics
+
+        ctx = await asyncio.to_thread(build_session_context, db, session_id)
+        metrics_result = await asyncio.to_thread(run_all_metrics, ctx)
+        crud.write_session_summary(db, session_id, metrics_result)
+        logger.info(
+            f"[teardown] behavioral metrics computed for session {session_id}: "
+            f"{len(metrics_result.get('metrics', []))} metric(s)"
+        )
+    except Exception as e:
+        logger.warning(
+            f"[teardown] metrics computation failed for session {session_id}: {e}",
+            exc_info=True,
+        )
