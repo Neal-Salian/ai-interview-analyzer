@@ -143,4 +143,11 @@ def get_analysis(
         "questions_generated": len(questions),
         "questions_asked": len(questions_asked),
         "questions": questions_list,
+
+        # Behavioral metrics (extensible framework — Phase 10)
+        "metrics": (
+            session.session_summary.get("metrics", [])
+            if session.session_summary
+            else []
+        ),
     }   
