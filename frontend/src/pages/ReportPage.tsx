@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import Navbar from '../components/Navbar';
 import client from '../api/client';
+import type { MetricResult } from '../types';
 
 interface Analysis {
     session_id: string
@@ -28,6 +29,7 @@ interface Analysis {
         was_asked: boolean
         created_at: string | null
     }[]
+    metrics: MetricResult[]
 }
 
 const EMOTION_COLOR: Record<string, string> = {
@@ -230,6 +232,21 @@ export default function ReportPage() {
                         </div>
                     )}
 
+                    {/* Behavioral Metrics — rendered dynamically (Phase 10) */}
+                    {analysis.metrics?.length > 0 && (
+                        <div style={cardStyle}>
+                            <h2 style={cardTitleStyle}>📊 Behavioral Insights</h2>
+                            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                                Metrics computed from emotion, transcript, attention, and behavioral signals.
+                            </p>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                {analysis.metrics.map(m => (
+                                    <MetricCard key={m.name} metric={m} />
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Full transcript */}
                     {analysis.full_transcript && (
                         <div style={cardStyle}>
@@ -319,6 +336,103 @@ export default function ReportPage() {
             </main>
         </div>
     );
+}
+
+// ── Dynamic metric card — renders any MetricResult without hardcoding ────────
+
+function getMetricColor(score: number): string {
+    if (score >= 80) return 'var(--success)'
+    if (score >= 60) return '#3b82f6'
+    if (score >= 40) return 'var(--warning)'
+    return 'var(--danger)'
+}
+
+function MetricCard({ metric }: { metric: MetricResult }) {
+    const [expanded, setExpanded] = useState(false)
+    const barColor = getMetricColor(metric.score)
+
+    return (
+        <div style={{
+            background: 'var(--bg)',
+            border: '1px solid var(--border)',
+            borderRadius: '6px',
+            padding: '14px',
+        }}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <span style={{ fontSize: '13px', fontWeight: 600 }}>{metric.name}</span>
+                <span style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: barColor,
+                    background: `${barColor}15`,
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                }}>{metric.level}</span>
+            </div>
+
+            {/* Score bar */}
+            <div style={{ width: '100%', height: '6px', backgroundColor: 'var(--border)', borderRadius: '3px', marginBottom: '8px', overflow: 'hidden' }}>
+                <div style={{
+                    width: `${metric.score}%`,
+                    height: '100%',
+                    backgroundColor: barColor,
+                    borderRadius: '3px',
+                    transition: 'width 0.5s ease',
+                }} />
+            </div>
+
+            {/* Score + confidence */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                <span>{metric.score}/100</span>
+                <span>{Math.round(metric.confidence * 100)}% confidence</span>
+            </div>
+
+            {/* Explanation */}
+            {metric.explanation && (
+                <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: '6px 0 0 0', lineHeight: 1.5 }}>
+                    {metric.explanation}
+                </p>
+            )}
+
+            {/* Expandable evidence */}
+            {metric.evidence.length > 0 && (
+                <>
+                    <button
+                        onClick={() => setExpanded(prev => !prev)}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--accent)',
+                            fontSize: '11px',
+                            cursor: 'pointer',
+                            padding: '4px 0 0 0',
+                            fontWeight: 500,
+                        }}
+                    >
+                        {expanded ? '▾ Hide evidence' : '▸ Show evidence'} ({metric.evidence.length})
+                    </button>
+                    {expanded && (
+                        <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {metric.evidence.map((e, i) => (
+                                <div key={i} style={{
+                                    fontSize: '11px',
+                                    color: 'var(--text-secondary)',
+                                    background: 'var(--bg-surface)',
+                                    padding: '6px 8px',
+                                    borderRadius: '4px',
+                                    borderLeft: '2px solid var(--accent)',
+                                    lineHeight: 1.4,
+                                }}>
+                                    {e.quote}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </>
+            )}
+        </div>
+    )
 }
 
 const cardStyle: React.CSSProperties = {
