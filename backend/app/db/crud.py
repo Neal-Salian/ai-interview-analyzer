@@ -47,6 +47,45 @@ def save_transcript(session_id: str, text: str):
         db.close()
 
 
+def save_attention(session_id: str, attention: dict):
+    """Save a single attention event (gaze direction + head pose) to the DB."""
+    db = SessionLocal()
+    try:
+        from app.db.models import AttentionEvent
+        event = AttentionEvent(
+            id=uuid.uuid4(),
+            session_id=session_id,
+            direction=attention.get("direction", "missing"),
+            confidence=attention.get("confidence", 0.0),
+            yaw=attention.get("yaw"),
+            pitch=attention.get("pitch"),
+            timestamp=datetime.datetime.utcnow()
+        )
+        db.add(event)
+        db.commit()
+    finally:
+        db.close()
+
+
+def save_integrity_event(session_id: str, event_data: dict):
+    """Save a single integrity event (multi-face, liveness, voice anomaly)."""
+    db = SessionLocal()
+    try:
+        from app.db.models import IntegrityEvent
+        event = IntegrityEvent(
+            id=uuid.uuid4(),
+            session_id=session_id,
+            event_type=event_data.get("event_type", "unknown"),
+            severity=event_data.get("severity", "info"),
+            details=event_data.get("details"),
+            timestamp=datetime.datetime.utcnow()
+        )
+        db.add(event)
+        db.commit()
+    finally:
+        db.close()
+
+
 # ── Job helpers ───────────────────────────────────────────────────────────────
 
 def create_job(title: str, raw_description: str, seniority_level: str = None):
