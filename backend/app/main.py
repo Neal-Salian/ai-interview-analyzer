@@ -20,6 +20,15 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         # DB might not be ready yet — log and continue, don't crash the server
         print(f"[STARTUP] Could not check active sessions (DB unavailable?): {e}")
+
+    # Discover and register all metric plugins (Phase 10)
+    try:
+        from app.ml.analysis.registry import discover_metrics
+        discover_metrics()
+        print("[STARTUP] Metric plugins discovered")
+    except Exception as e:
+        print(f"[STARTUP] Metric discovery failed (non-fatal): {e}")
+
     yield
 
 
