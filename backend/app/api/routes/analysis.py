@@ -150,4 +150,59 @@ def get_analysis(
             if session.session_summary
             else []
         ),
-    }   
+
+        # Attention summary (Phase 2) — from session_summary
+        "attention_summary": (
+            session.session_summary.get("attention_summary")
+            if session.session_summary
+            else None
+        ),
+
+        # Integrity events (Phase 3) — from DB
+        "integrity_events": _get_integrity_events(db, session_id),
+    }
+
+
+def _get_integrity_events(db: Session, session_id: str) -> list:
+    """Fetch integrity events for the analysis response."""
+    try:
+        from app.db.models import IntegrityEvent
+        events = (
+            db.query(IntegrityEvent)
+            .filter(IntegrityEvent.session_id == session_id)
+            .order_by(IntegrityEvent.timestamp.asc())
+            .all()
+        )
+        return [
+            {
+                "event_type": e.event_type,
+                "severity": e.severity,
+                "details": str(e.details) if e.details else "",
+                "timestamp": e.timestamp.isoformat() if e.timestamp else None,
+            }
+            for e in events
+        ]
+    except Exception:
+        return []
+
+
+@router.post("/analysis/{session_id}/explain")
+async def explain_metric(
+    session_id: str,
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """
+    Recruiter asks a question about a metric in the report.
+
+    Request body: {"question": "Why was confidence high?"}
+    Returns: {"answer": "...", "metric_name": "...", "evidence": [...]}
+    """
+    question = body.get("question", "")
+    if not question:
+        raise HTTPException(status_code=400, detail="Question is required")
+
+    from app.ml.explain.report_chat import chat_about_report
+    result = await chat_about_report(session_id, question, db)
+    return result
