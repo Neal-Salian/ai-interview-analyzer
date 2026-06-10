@@ -12,7 +12,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.api.routes.auth import get_current_user
+from app.api.deps import get_current_user
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
