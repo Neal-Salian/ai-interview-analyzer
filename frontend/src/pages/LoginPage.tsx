@@ -45,7 +45,7 @@ export default function LoginPage() {
                 borderRadius: 'var(--radius-lg)',
                 padding: '40px',
                 width: '380px',
-                boxShadow: 'var(--shadow)',
+                boxShadow: 'var(--shadow-card)',
             }}>
                 <h2 style={{ marginBottom: '8px', fontSize: '22px', fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em', fontWeight: 700, }}>Welcome back</h2>
                 <p style={{ color: 'var(--text-secondary)', marginBottom: '32px', fontSize: '13px' }}>
@@ -88,7 +88,9 @@ export default function LoginPage() {
                         disabled={loading}
                         style={{
                             background: 'var(--accent)',
-                            color: '#000',
+                            backgroundImage: 'var(--accent-gradient)',
+                            boxShadow: 'var(--accent-glow)',
+                            color: '#ffffff',
                             border: 'none',
                             borderRadius: 'var(--radius)',
                             fontFamily: 'var(--font-heading)',
