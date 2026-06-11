@@ -112,7 +112,7 @@ export default function SessionsPage() {
                             }}
                             style={{
                                 display: 'flex', alignItems: 'center', gap: '0.5rem',
-                                backgroundColor: 'var(--accent)', color: '#ffffff',
+                                backgroundColor: 'var(--accent)', backgroundImage: 'var(--accent-gradient)', boxShadow: 'var(--accent-glow)', color: '#ffffff',
                                 border: 'none', padding: '0 1rem', height: '40px',
                                 borderRadius: 'var(--radius-sm, 6px)', fontWeight: 500,
                                 fontSize: '13px', cursor: 'pointer'
@@ -139,6 +139,7 @@ export default function SessionsPage() {
                                 backgroundColor: 'var(--bg-surface)',
                                 borderRadius: '10px',
                                 border: '1px solid var(--border)',
+                                boxShadow: 'var(--shadow-card)',
                                 padding: '1.5rem',
                                 display: 'flex',
                                 flexDirection: 'column',
@@ -207,7 +208,7 @@ export default function SessionsPage() {
                                             onClick={() => navigate(`/sessions/${session.session_id}/live`)}
                                             style={{
                                                 width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
-                                                backgroundColor: 'var(--accent)', color: '#fff', border: 'none', padding: '0.75rem',
+                                                backgroundColor: 'var(--accent)', backgroundImage: 'var(--accent-gradient)', boxShadow: 'var(--accent-glow)', color: '#fff', border: 'none', padding: '0.75rem',
                                                 borderRadius: '6px', fontWeight: 500, cursor: 'pointer', fontSize: '13px'
                                             }}
                                         >
@@ -341,7 +342,7 @@ export default function SessionsPage() {
                                 onClick={handleNewSession}
                                 disabled={!selectedCandidate || creating}
                                 style={{
-                                    background: 'var(--accent)', border: 'none',
+                                    background: 'var(--accent)', backgroundImage: 'var(--accent-gradient)', boxShadow: 'var(--accent-glow)', border: 'none',
                                     borderRadius: '6px', padding: '8px 16px',
                                     color: '#fff', cursor: 'pointer', fontWeight: 600,
                                     opacity: !selectedCandidate || creating ? 0.5 : 1
