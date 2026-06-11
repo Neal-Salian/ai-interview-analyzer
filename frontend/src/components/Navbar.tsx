@@ -36,29 +36,29 @@ export default function Navbar() {
                     onClick={() => navigate('/candidates/new')}
                     style={{
                         background: 'var(--accent)',
+                        backgroundImage: 'var(--accent-gradient)',
+                        boxShadow: 'var(--accent-glow)',
                         color: '#ffffff',
-                        border: '1px solid var(--accent)',
+                        border: 'none',
                         borderRadius: 'var(--radius)',
                         padding: '6px 14px',
                         fontSize: '13px',
                     }}
-                    onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--radius)')}
-                    onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
                 >
                     + New Candidate
                 </button>
                 <button
                     onClick={handleLogout}
                     style={{
-                        background: '#ff1a00',
-                        color: '#ffffff',
-                        border: '1px solid var(--red)',
+                        background: 'transparent',
+                        color: 'var(--red)',
+                        border: '1px solid var(--border)',
                         borderRadius: 'var(--radius)',
                         padding: '6px 14px',
                         fontSize: '13px',
                     }}
-                    onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--red-bg)')}
-                    onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--red)')}
+                    onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--red)')}
+                    onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
                 >
                     Logout
                 </button>
