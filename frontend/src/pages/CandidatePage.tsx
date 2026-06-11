@@ -31,7 +31,8 @@ export default function CandidatePage() {
 
                 <div style={{
                     background: 'var(--bg-surface)',
-                    border: '2px solid var(--border)',
+                    border: '1px solid var(--border)',
+                    boxShadow: 'var(--shadow-card)',
                     borderRadius: 'var(--radius-lg)',
                     padding: '32px',
                 }}>
@@ -72,6 +73,8 @@ export default function CandidatePage() {
                             disabled={!name || !email}
                             style={{
                                 background: 'var(--accent)',
+                                backgroundImage: 'var(--accent-gradient)',
+                                boxShadow: 'var(--accent-glow)',
                                 color: '#fff',
                                 border: 'none',
                                 borderRadius: 'var(--radius)',
