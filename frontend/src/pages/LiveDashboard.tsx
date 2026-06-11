@@ -214,7 +214,7 @@ export default function LiveDashboard() {
                                         contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '12px' }}
                                         formatter={(val, _name, props) => [`${val}%`, props.payload.emotion]}
                                     />
-                                    <Line type="monotone" dataKey="confidence" stroke="#0055ff" strokeWidth={2} dot={false} />
+                                    <Line type="monotone" dataKey="confidence" stroke="var(--accent)" strokeWidth={2} dot={false} />
                                 </LineChart>
                             </ResponsiveContainer>
                         )}
@@ -245,6 +245,8 @@ export default function LiveDashboard() {
                                             style={{
                                                 flexShrink: 0,
                                                 background: 'var(--accent)',
+                                                backgroundImage: 'var(--accent-gradient)',
+                                                boxShadow: 'var(--accent-glow)',
                                                 color: '#ffffff',
                                                 border: 'none',
                                                 borderRadius: 'var(--radius)',
@@ -296,7 +298,8 @@ export default function LiveDashboard() {
 
 const cardStyle: React.CSSProperties = {
     background: 'var(--bg-surface)',
-    border: '2px solid var(--border)',
+    border: '1px solid var(--border)',
+    boxShadow: 'var(--shadow-card)',
     borderRadius: 'var(--radius-lg)',
     padding: '20px',
 }
