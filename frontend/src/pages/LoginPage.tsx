@@ -117,7 +117,7 @@ export default function LoginPage() {
                     background: 'radial-gradient(circle, var(--glow-color) 0%, transparent 60%)',
                     borderRadius: '50%',
                     pointerEvents: 'none',
-                    transition: 'top 0.4s ease-out, left 0.4s ease-out',
+                    transition: 'top 0.4s ease-out, left 0.4s ease-out, var(--theme-transition)',
                 }} />
 
                 {/* Brand Logo */}
@@ -283,7 +283,7 @@ export default function LoginPage() {
                                 opacity: loading ? 0.7 : 1,
                                 marginTop: '12px',
                                 cursor: 'pointer',
-                                transition: 'transform 0.1s, opacity 0.2s',
+                                transition: 'transform 0.1s, opacity 0.2s, var(--theme-transition)',
                             }}
                             className="login-btn"
                         >
@@ -313,5 +313,5 @@ const inputStyle: React.CSSProperties = {
     fontSize: '14px',
     outline: 'none',
     fontFamily: 'var(--font-body)',
-    transition: 'border-color 0.2s, box-shadow 0.2s',
+    transition: 'border-color 0.2s, box-shadow 0.2s, background-color var(--theme-transition-duration) var(--theme-transition-easing), color var(--theme-transition-duration) var(--theme-transition-easing)',
 }

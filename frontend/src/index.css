@@ -34,6 +34,17 @@
   --accent-glow: 0 0 20px rgba(91,140,255,.15);
   --grid-color: rgba(255, 255, 255, 0.02);
   --glow-color: rgba(91, 140, 255, 0.07);
+  --theme-transition-duration: 300ms;
+  --theme-transition-easing: cubic-bezier(0.4, 0, 0.2, 1);
+  --theme-transition: background-color var(--theme-transition-duration) var(--theme-transition-easing), border-color var(--theme-transition-duration) var(--theme-transition-easing), color var(--theme-transition-duration) var(--theme-transition-easing), box-shadow var(--theme-transition-duration) var(--theme-transition-easing), fill var(--theme-transition-duration) var(--theme-transition-easing), stroke var(--theme-transition-duration) var(--theme-transition-easing);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  *, *::before, *::after {
+    transition-property: background-color, border-color, color, fill, stroke, box-shadow;
+    transition-duration: var(--theme-transition-duration);
+    transition-timing-function: var(--theme-transition-easing);
+  }
 }
 
 /* Light Theme Overrides */

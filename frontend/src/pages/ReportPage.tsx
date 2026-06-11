@@ -378,7 +378,7 @@ function MetricCard({ metric }: { metric: MetricResult }) {
                     height: '100%',
                     backgroundColor: barColor,
                     borderRadius: '3px',
-                    transition: 'width 0.5s ease',
+                    transition: 'width 0.5s ease, var(--theme-transition)',
                 }} />
             </div>
 

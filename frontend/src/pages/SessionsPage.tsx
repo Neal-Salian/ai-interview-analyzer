@@ -181,7 +181,7 @@ export default function SessionsPage() {
                                 flexDirection: 'column',
                                 gap: '1.25rem',
                                 opacity: session.status === 'completed' ? 0.8 : 1,
-                                transition: 'opacity 0.2s'
+                                transition: 'opacity 0.2s, var(--theme-transition)'
                             }}
                                 onMouseEnter={e => e.currentTarget.style.opacity = '1'}
                                 onMouseLeave={e => e.currentTarget.style.opacity = session.status === 'completed' ? '0.8' : '1'}
