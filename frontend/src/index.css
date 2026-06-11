@@ -32,23 +32,21 @@
   --radius-lg: 0.5rem;
   --shadow-card: 0 8px 24px rgba(0,0,0,.20);
   --accent-glow: 0 0 20px rgba(91,140,255,.15);
+  --grid-color: rgba(255, 255, 255, 0.02);
+  --glow-color: rgba(91, 140, 255, 0.07);
 }
 
 /* Light Theme Overrides */
 :root.light {
-  --bg: #f9fafb;
-  /* Light gray background */
-  --bg-surface: #ffffff;
-  /* Pure white cards */
-  --bg-hover: #f3f4f6;
-  --border: #e5e7eb;
-  --text-primary: #111827;
-  /* Near black text */
-  --text-secondary: #6b7280;
-  /* Gray text */
-
-  /* We keep the primary accent and status colors exactly the same 
-     so the branding and emotion badges remain consistent! */
+  --bg: #F8FAFC;
+  --bg-surface: #FFFFFF;
+  --bg-surface-high: #F1F5F9;
+  --bg-surface-highest: #E2E8F0;
+  --border: #E2E8F0;
+  --text-primary: #0F172A;
+  --text-secondary: #64748B;
+  --grid-color: rgba(0, 0, 0, 0.05);
+  --glow-color: rgba(91, 140, 255, 0.1);
 }
 
 body {
