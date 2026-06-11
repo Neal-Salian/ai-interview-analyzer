@@ -438,6 +438,7 @@ function MetricCard({ metric }: { metric: MetricResult }) {
 const cardStyle: React.CSSProperties = {
     backgroundColor: 'var(--bg-surface)',
     border: '1px solid var(--border)',
+    boxShadow: 'var(--shadow-card)',
     borderRadius: '8px',
     padding: '1.5rem',
 }
