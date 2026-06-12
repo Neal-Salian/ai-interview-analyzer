@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import Navbar from '../components/Navbar';
+import ReportChat from '../components/ReportChat';
 import client from '../api/client';
 import type { MetricResult } from '../types';
 
@@ -16,6 +17,7 @@ interface Analysis {
     emotion_breakdown: Record<string, number>
     avg_confidence: number
     emotion_timeline: { dominant_emotion: string; confidence: number; timestamp: string }[]
+    total_frames_analyzed: number
     transcript_chunks: number
     full_transcript: string
     big_five: Record<string, number>
@@ -106,6 +108,24 @@ export default function ReportPage() {
     const circumference = 314
     const dashOffset = circumference - (circumference * (confidencePercent / 100))
 
+    const downloadPdf = async () => {
+        try {
+            const response = await client.get(`/reports/${sessionId}/pdf`, {
+                responseType: 'blob'
+            });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `interview_report_${analysis?.candidate}_${sessionId?.substring(0,8)}.pdf`);
+            document.body.appendChild(link);
+            link.click();
+            link.parentNode?.removeChild(link);
+        } catch (err) {
+            console.error('Failed to download PDF', err);
+            alert('Failed to download PDF');
+        }
+    }
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: 'var(--bg)', color: 'var(--text-primary)' }}>
             <Navbar />
@@ -121,9 +141,16 @@ export default function ReportPage() {
                             {analysis.candidate ?? 'Unknown Candidate'} — Session Report
                         </h1>
                     </div>
-                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '4px', padding: '4px 10px' }}>
-                        PDF coming soon
-                    </span>
+                    <button 
+                        onClick={downloadPdf}
+                        style={{ 
+                            fontSize: '13px', color: '#fff', background: 'var(--accent)', 
+                            border: 'none', borderRadius: '6px', padding: '6px 14px', 
+                            cursor: 'pointer', fontWeight: 600 
+                        }}
+                    >
+                        📄 Download PDF
+                    </button>
                 </div>
 
                 <div style={{ display: 'flex', gap: '2rem', color: 'var(--text-secondary)', fontSize: '13px', marginLeft: '2.5rem', flexWrap: 'wrap' }}>
@@ -262,6 +289,12 @@ export default function ReportPage() {
                             </div>
                         </div>
                     )}
+
+                    {/* Explainability Chat */}
+                    <div style={cardStyle}>
+                        <h2 style={cardTitleStyle}>💬 Ask about this report</h2>
+                        <ReportChat sessionId={sessionId!} />
+                    </div>
                 </div>
 
                 {/* RIGHT COLUMN */}
