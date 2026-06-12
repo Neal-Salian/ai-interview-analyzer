@@ -39,10 +39,11 @@ export interface MetricResult {
 }
 
 export interface WSMessage {
-    type: 'history' | 'emotion' | 'transcript' | 'question' | 'metric_update' | 'ping'
+    type: 'history' | 'emotion' | 'transcript' | 'question' | 'metric_update' | 'ping' | 'attention' | 'integrity_alert' | 'sentiment'
     // history
     emotions?: EmotionFrame[]
     transcripts?: TranscriptChunk[]
+    questions?: SuggestedQuestion[]
     // live
     dominant_emotion?: string
     confidence?: number
@@ -50,4 +51,13 @@ export interface WSMessage {
     question?: SuggestedQuestion
     metric?: MetricResult
     timestamp?: string
+    // attention
+    direction?: string
+    // integrity_alert
+    event_type?: string
+    severity?: string
+    details?: string
+    // sentiment
+    label?: string
+    score?: number
 }
