@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import client from '../api/client'
-
+import PageTransition from '../components/PageTransition'
 
 export default function LoginPage() {
     const [email, setEmail] = useState('')
@@ -40,6 +40,7 @@ export default function LoginPage() {
     }
 
     return (
+        <PageTransition>
         <div style={{
             minHeight: '100vh',
             display: 'flex',
@@ -300,6 +301,7 @@ export default function LoginPage() {
                 </div>
             </div>
         </div>
+        </PageTransition>
     )
 }
 
