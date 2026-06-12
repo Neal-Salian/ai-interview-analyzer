@@ -15,12 +15,6 @@ const EMOTION_COLOR: Record<string, string> = {
     disgust: '#a78bfa',
 }
 
-const MOCK_QUESTIONS: SuggestedQuestion[] = [
-    { id: '1', question_text: 'Can you walk me through a specific example of a challenging project you led?', triggered_by: 'leadership experience', was_asked: false, created_at: '' },
-    { id: '2', question_text: 'How did you handle the technical debt you mentioned?', triggered_by: 'technical debt', was_asked: false, created_at: '' },
-    { id: '3', question_text: 'What metrics did you use to measure success in that role?', triggered_by: 'success metrics', was_asked: false, created_at: '' },
-]
-
 const MOCK_EMOTIONS: EmotionFrame[] = [
     { dominant_emotion: 'neutral', confidence: 72.5, timestamp: new Date(Date.now() - 120000).toISOString() },
     { dominant_emotion: 'happy', confidence: 85.3, timestamp: new Date(Date.now() - 90000).toISOString() },
@@ -44,6 +38,9 @@ export default function LiveDashboard() {
     const [questions, setQuestions] = useState<SuggestedQuestion[]>([])
     const [currentEmotion, setCurrentEmotion] = useState<string>('—')
     const [currentConfidence, setCurrentConfidence] = useState<number>(0)
+    const [currentAttention, setCurrentAttention] = useState<string>('—')
+    const [currentSentiment, setCurrentSentiment] = useState<string>('—')
+    const [integrityAlerts, setIntegrityAlerts] = useState<{event_type: string, severity: string, details: string, timestamp: string}[]>([])
     const [connected, setConnected] = useState(false)
     const [sessionInfo, setSessionInfo] = useState<{ candidate: string, job: string } | null>(null)
     const transcriptRef = useRef<HTMLDivElement>(null)
@@ -127,6 +124,23 @@ export default function LiveDashboard() {
                     return [...prev, msg.question!]
                 })
             }
+
+            if (msg.type === 'attention' && msg.direction) {
+                setCurrentAttention(msg.direction)
+            }
+
+            if (msg.type === 'sentiment' && msg.label) {
+                setCurrentSentiment(msg.label)
+            }
+
+            if (msg.type === 'integrity_alert' && msg.event_type) {
+                setIntegrityAlerts(prev => [...prev, {
+                    event_type: msg.event_type!,
+                    severity: msg.severity || 'warning',
+                    details: msg.details || '',
+                    timestamp: new Date().toISOString()
+                }].slice(-5)) // Keep last 5
+            }
         }
 
         return () => ws.close()
@@ -184,14 +198,29 @@ export default function LiveDashboard() {
                     {/* Current emotion card */}
                     <div style={cardStyle}>
                         <div style={{ fontSize: '14px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', fontWeight: 700, fontFamily: 'var(--font-heading)' }}>
-                            Current Emotion
+                            Live Vitals
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                            <div style={{ fontSize: '40px', fontWeight: 700, color: emotionColor, textTransform: 'capitalize' }}>
-                                {currentEmotion}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                            <div>
+                                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Emotion</div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <div style={{ fontSize: '24px', fontWeight: 700, color: emotionColor, textTransform: 'capitalize' }}>
+                                        {currentEmotion}
+                                    </div>
+                                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{currentConfidence.toFixed(1)}%</div>
+                                </div>
                             </div>
-                            <div style={{ fontSize: '13px', color: 'var(--text-secondary)', background: 'var(--bg)', padding: '4px 12px', borderRadius: '20px' }}>
-                                {currentConfidence.toFixed(1)}% confidence
+                            <div>
+                                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Attention</div>
+                                <div style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', textTransform: 'capitalize' }}>
+                                    {currentAttention}
+                                </div>
+                            </div>
+                            <div>
+                                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Sentiment</div>
+                                <div style={{ fontSize: '18px', fontWeight: 600, color: currentSentiment === 'POSITIVE' ? 'var(--success)' : currentSentiment === 'NEGATIVE' ? 'var(--danger)' : 'var(--text-primary)', textTransform: 'capitalize' }}>
+                                    {currentSentiment}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -267,10 +296,30 @@ export default function LiveDashboard() {
                 </div>
 
                 {/* Right column — transcript */}
-                <div style={cardStyle}>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', fontFamily: 'var(--font-heading)' }}>
-                        Live Transcript
-                    </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {integrityAlerts.length > 0 && (
+                        <div style={{ ...cardStyle, borderColor: 'var(--danger)', borderLeftWidth: '4px' }}>
+                            <div style={{ fontSize: '12px', color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px', fontFamily: 'var(--font-heading)', fontWeight: 700 }}>
+                                ⚠️ Integrity Alerts
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                {integrityAlerts.map((alert, i) => (
+                                    <div key={i} style={{ fontSize: '13px', background: 'var(--bg)', padding: '8px', borderRadius: '4px' }}>
+                                        <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{alert.event_type}</span>
+                                        {alert.details && <span style={{ color: 'var(--text-secondary)', marginLeft: '8px' }}>— {alert.details}</span>}
+                                        <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                                            {new Date(alert.timestamp).toLocaleTimeString()}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    <div style={{ ...cardStyle, flex: 1 }}>
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', fontFamily: 'var(--font-heading)' }}>
+                            Live Transcript
+                        </div>
                     <div
                         ref={transcriptRef}
                         style={{ height: '600px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}
@@ -288,6 +337,7 @@ export default function LiveDashboard() {
                                 <div style={{ fontSize: '14px', lineHeight: 1.6 }}>{chunk.text}</div>
                             </div>
                         ))}
+                    </div>
                     </div>
                 </div>
 
