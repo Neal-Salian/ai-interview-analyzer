@@ -3,9 +3,14 @@ import time
 import asyncio
 import logging
 from app.ml.emotion.detector import analyze_frame
+from app.ml.vision.attention_analyzer import analyze_attention
 from app.ml.speech.transcriber import transcribe_chunk
 from app.ml.llm.question_generator import generate_analysis
-from app.db.crud import save_emotion, save_transcript, save_question
+from app.ml.nlp.scorer import score_sentiment
+from app.db.crud import (
+    save_emotion, save_transcript, save_question,
+    save_attention, save_integrity_event,
+)
 from app.api.websocket import broadcast
 
 logger = logging.getLogger(__name__)
@@ -15,7 +20,8 @@ logger = logging.getLogger(__name__)
 # 2 = call every 3rd chunk (lighter on CPU during long interviews)
 LLM_EVERY_N_CHUNKS = 0
 
-async def consume_stream(session_id: str, rtmp_url: str):
+
+async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
     logger.info(f"[CONSUMER] Opening stream: {rtmp_url}")
 
     try:
@@ -27,6 +33,7 @@ async def consume_stream(session_id: str, rtmp_url: str):
     last_analyzed = 0
     audio_buffer = []
     transcript_chunk_count = 0
+    integrity_state = {}  # Phase 3: persistent state for liveness tracking
 
     logger.info("[CONSUMER] Stream opened. Starting packet loop...")
 
@@ -34,7 +41,7 @@ async def consume_stream(session_id: str, rtmp_url: str):
         if packet.dts is None:
             continue
 
-        # ── Video — emotion detection at 1fps ─────────────────────────────────
+        # ── Video — emotion + attention at 1fps ───────────────────────────────
         if packet.stream.type == 'video':
             now = time.time()
             if now - last_analyzed >= 1.0:
@@ -44,19 +51,56 @@ async def consume_stream(session_id: str, rtmp_url: str):
                         continue
 
                     frame = frames[0].to_ndarray(format="bgr24")
-                    emotion = await asyncio.to_thread(analyze_frame, frame)
 
+                    # Run emotion and attention in parallel on the same frame
+                    emotion, attention = await asyncio.gather(
+                        asyncio.to_thread(analyze_frame, frame),
+                        asyncio.to_thread(analyze_attention, frame),
+                    )
+
+                    # Save & broadcast emotion (existing)
                     await asyncio.to_thread(save_emotion, session_id, emotion)
-
                     await broadcast(session_id, {
                         "type": "emotion",
                         "dominant_emotion": emotion["dominant_emotion"],
                         "confidence": emotion["confidence"],
                     })
 
+                    # Save & broadcast attention (Phase 2)
+                    await asyncio.to_thread(save_attention, session_id, attention)
+                    await broadcast(session_id, {
+                        "type": "attention",
+                        "direction": attention["direction"],
+                        "confidence": attention["confidence"],
+                    })
+
+                    # Phase 3: Integrity checks (reuses frame + attention result)
+                    try:
+                        from app.ml.integrity.integrity_checker import check_integrity
+                        integrity = await asyncio.to_thread(
+                            check_integrity, frame, attention,
+                            prev_state=integrity_state,
+                        )
+                        integrity_state = integrity.get("updated_state", {})
+                        for event in integrity.get("events", []):
+                            await asyncio.to_thread(
+                                save_integrity_event, session_id, event
+                            )
+                            await broadcast(session_id, {
+                                "type": "integrity_alert",
+                                "event_type": event["event_type"],
+                                "severity": event["severity"],
+                                "details": str(event.get("details", "")),
+                            })
+                    except ImportError:
+                        pass  # Phase 3 not installed yet
+                    except Exception as e:
+                        logger.warning(f"[INTEGRITY ERROR] {e}")
+
                     logger.debug(
                         f"[EMOTION] {emotion['dominant_emotion']} "
-                        f"({emotion['confidence']:.1f}%)"
+                        f"({emotion['confidence']:.1f}%) "
+                        f"[ATTENTION] {attention['direction']}"
                     )
                     last_analyzed = now
 
@@ -71,14 +115,48 @@ async def consume_stream(session_id: str, rtmp_url: str):
 
             if len(audio_buffer) >= 900:
                 try:
-                    transcript = await asyncio.to_thread(
-                        transcribe_chunk, audio_buffer
-                    )
+                    packets_to_process = audio_buffer.copy()
                     audio_buffer = []
+                    
+                    transcript = await asyncio.to_thread(
+                        transcribe_chunk, packets_to_process
+                    )
                     transcript_chunk_count += 1
+
+                    # Phase 4: Vocabulary correction with job context
+                    if job_id:
+                        try:
+                            from app.ml.speech.vocabulary_corrector import correct_transcript
+                            from app.db.crud import get_job
+                            job = await asyncio.to_thread(get_job, job_id)
+                            if job:
+                                transcript = correct_transcript(
+                                    transcript,
+                                    job_skills=job.extracted_skills or [],
+                                    candidate_name="",
+                                )
+                        except Exception as e:
+                            logger.warning(f"[VOCAB CORRECTION] {e}")
 
                     # Save transcript to DB
                     await asyncio.to_thread(save_transcript, session_id, transcript)
+
+                    # Score sentiment on this chunk and broadcast
+                    try:
+                        sentiment = await asyncio.to_thread(
+                            score_sentiment, transcript
+                        )
+                        await broadcast(session_id, {
+                            "type": "sentiment",
+                            "label": sentiment["label"],
+                            "score": sentiment["score"],
+                        })
+                        logger.debug(
+                            f"[SENTIMENT] {sentiment['label']} "
+                            f"({sentiment['score']})"
+                        )
+                    except Exception as e:
+                        logger.warning(f"[SENTIMENT ERROR] {e}")
 
                     # Broadcast transcript to dashboard
                     await broadcast(session_id, {
@@ -95,9 +173,37 @@ async def consume_stream(session_id: str, rtmp_url: str):
                             _generate_and_broadcast_questions(
                                 session_id=session_id,
                                 transcript=transcript,
-                                job_id="",  # wire to session.job_id when candidates route is built
+                                job_id=job_id,
                             )
                         )
+
+                    # ── Phase 3: Voice anomaly detection ──────────────────────
+                    try:
+                        from app.ml.integrity.voice_detector import detect_voice_anomaly
+                        from app.ml.speech.transcriber import get_audio_array
+                        
+                        voice_result = await asyncio.to_thread(
+                            detect_voice_anomaly,
+                            get_audio_array(packets_to_process)
+                        )
+                        if voice_result.get("anomaly_detected"):
+                            await asyncio.to_thread(
+                                save_integrity_event, session_id, {
+                                    "event_type": f"voice_{voice_result['anomaly_type']}",
+                                    "severity": "warning",
+                                    "details": voice_result.get("details", {}),
+                                }
+                            )
+                            await broadcast(session_id, {
+                                "type": "integrity_alert",
+                                "event_type": f"voice_{voice_result['anomaly_type']}",
+                                "severity": "warning",
+                                "details": str(voice_result.get("details", "")),
+                            })
+                    except ImportError:
+                        pass
+                    except Exception as e:
+                        logger.warning(f"[VOICE INTEGRITY] {e}")
 
                 except asyncio.CancelledError:
                     raise
@@ -161,8 +267,7 @@ async def _generate_and_broadcast_questions(
 
             logger.info(f"[QUESTION] [{q['triggered_by']}] {q['text'][:60]}")
 
-        # Log STAR feedback and confidence score but don't broadcast
-        # — these will be used in the session report
+        # Log STAR feedback and confidence score — used in session report
         if result.get("star_feedback"):
             logger.info(f"[STAR] {result['star_feedback']}")
         if result.get("confidence_score"):

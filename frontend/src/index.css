@@ -9,43 +9,55 @@
 }
 
 :root {
-  --bg: #0e0e0e;
-  --bg-surface: #181a1a;
-  --bg-surface-high: #1e2020;
-  --bg-surface-highest: #242627;
-  --border: #464849;
-  --border-muted: #747676;
-  --text-primary: #e5e5e6;
-  --text-secondary: #aaabab;
-  --accent: #0055ff;
-  --accent-hover: #3467ff;
-  --accent-bg: rgba(0, 85, 255, 0.12);
-  --red: #ff7261;
-  --red-dark: #7e0003;
-  --success: #34d399;
-  --warning: #fbbf24;
-  --danger: #ee7d77;
+  --bg: #0A0D14;
+  --bg-surface: #111827;
+  --bg-surface-high: #161B26;
+  --bg-surface-highest: #1f2937;
+  --border: #242B3D;
+  --border-muted: #374151;
+  --text-primary: #F3F4F6;
+  --text-secondary: #9CA3AF;
+  --accent: #5B8CFF;
+  --accent-hover: #76A1FF;
+  --accent-bg: rgba(91, 140, 255, 0.15);
+  --accent-gradient: linear-gradient(135deg, #5B8CFF, #7B61FF);
+  --red: #EF4444;
+  --red-dark: #b91c1c;
+  --success: #22C55E;
+  --warning: #F59E0B;
+  --danger: #EF4444;
   --font-heading: 'Space Grotesk', system-ui, sans-serif;
   --font-body: 'Inter', system-ui, sans-serif;
   --radius: 0.25rem;
   --radius-lg: 0.5rem;
+  --shadow-card: 0 8px 24px rgba(0,0,0,.20);
+  --accent-glow: 0 0 20px rgba(91,140,255,.15);
+  --grid-color: rgba(255, 255, 255, 0.02);
+  --glow-color: rgba(91, 140, 255, 0.07);
+  --theme-transition-duration: 300ms;
+  --theme-transition-easing: cubic-bezier(0.4, 0, 0.2, 1);
+  --theme-transition: background-color var(--theme-transition-duration) var(--theme-transition-easing), border-color var(--theme-transition-duration) var(--theme-transition-easing), color var(--theme-transition-duration) var(--theme-transition-easing), box-shadow var(--theme-transition-duration) var(--theme-transition-easing), fill var(--theme-transition-duration) var(--theme-transition-easing), stroke var(--theme-transition-duration) var(--theme-transition-easing);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  *, *::before, *::after {
+    transition-property: background-color, border-color, color, fill, stroke, box-shadow;
+    transition-duration: var(--theme-transition-duration);
+    transition-timing-function: var(--theme-transition-easing);
+  }
 }
 
 /* Light Theme Overrides */
 :root.light {
-  --bg: #f9fafb;
-  /* Light gray background */
-  --bg-surface: #ffffff;
-  /* Pure white cards */
-  --bg-hover: #f3f4f6;
-  --border: #e5e7eb;
-  --text-primary: #111827;
-  /* Near black text */
-  --text-secondary: #6b7280;
-  /* Gray text */
-
-  /* We keep the primary accent and status colors exactly the same 
-     so the branding and emotion badges remain consistent! */
+  --bg: #F8FAFC;
+  --bg-surface: #FFFFFF;
+  --bg-surface-high: #F1F5F9;
+  --bg-surface-highest: #E2E8F0;
+  --border: #E2E8F0;
+  --text-primary: #0F172A;
+  --text-secondary: #64748B;
+  --grid-color: rgba(0, 0, 0, 0.05);
+  --glow-color: rgba(91, 140, 255, 0.1);
 }
 
 body {
@@ -89,3 +101,20 @@ input {
   background: var(--border);
   border-radius: 3px;
 }
+/* Page Transitions */
+.page-transition {
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 250ms cubic-bezier(0.4, 0, 0.2, 1), transform 250ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.page-transition.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+@media (prefers-reduced-motion: reduce) {
+    .page-transition {
+        transform: none;
+        transition: opacity 250ms ease;
+    }
+}
+

@@ -51,7 +51,7 @@ class EmotionFrame(Base):
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
     dominant_emotion = Column(String)
     confidence = Column(Float)
-    session = relationship("Session", back_populates="emotion_frames")  # ← add
+    session = relationship("Session", back_populates="emotion_frames")  
 
 
 class TranscriptChunk(Base):
@@ -60,7 +60,7 @@ class TranscriptChunk(Base):
     session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"))
     text = Column(Text)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
-    session = relationship("Session", back_populates="transcript_chunks")  # ← add
+    session = relationship("Session", back_populates="transcript_chunks")  
 
 
 class SuggestedQuestion(Base):
@@ -71,4 +71,40 @@ class SuggestedQuestion(Base):
     triggered_by = Column(Text)
     was_asked = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    session = relationship("Session", back_populates="suggested_questions")  # ← add
+    session = relationship("Session", back_populates="suggested_questions")  
+
+
+class Recruiter(Base):
+    __tablename__ = "recruiters"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email = Column(String, unique=True, nullable=False, index=True)
+    hashed_password = Column(String, nullable=False)
+    full_name = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+# ── Phase 2: Attention tracking ──────────────────────────────────────────────
+
+class AttentionEvent(Base):
+    __tablename__ = "attention_events"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"), index=True)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    direction = Column(String)       # center, left, right, up, down, missing
+    confidence = Column(Float)
+    yaw = Column(Float, nullable=True)
+    pitch = Column(Float, nullable=True)
+    session = relationship("Session", backref="attention_events")
+
+
+# ── Phase 3: Integrity events ────────────────────────────────────────────────
+
+class IntegrityEvent(Base):
+    __tablename__ = "integrity_events"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"), index=True)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    event_type = Column(String)      # multi_face, liveness_fail, voice_anomaly
+    severity = Column(String)        # info, warning, critical
+    details = Column(JSONB, nullable=True)
+    session = relationship("Session", backref="integrity_events")

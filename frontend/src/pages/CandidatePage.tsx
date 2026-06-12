@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
+import client from '../api/client'
+import PageTransition from '../components/PageTransition'
 
 export default function CandidatePage() {
     const [name, setName] = useState('')
@@ -9,17 +11,25 @@ export default function CandidatePage() {
     const navigate = useNavigate()
 
     const handleSubmit = async () => {
-        // Real endpoint not built yet — mock success
-        // Replace with: await client.post('/candidates', { name, email })
         if (!name || !email) return
-        setStatus('success')
-        setTimeout(() => navigate('/sessions'), 1500)
+        try {
+            await client.post('/candidates', { name, email })
+            setStatus('success')
+            setTimeout(() => navigate('/sessions'), 1500)
+        } catch (err: any) {
+            setStatus('error')
+        }
     }
 
     return (
-        <div>
+        <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: 'var(--bg)', color: 'var(--text-primary)' }}>
             <Navbar />
-            <div style={{ padding: '40px 24px', maxWidth: '480px', margin: '0 auto' }}>
+            <PageTransition>
+            <div style={{ padding: '2rem', maxWidth: '480px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+                <button onClick={() => navigate('/sessions')} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 500, padding: '0 0 16px 0' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>arrow_back</span>
+                    Back to Sessions
+                </button>
                 <h1 style={{ fontSize: '22px', fontWeight: 700, fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em', marginBottom: '8px' }}>Register Candidate</h1>
                 <p style={{ color: 'var(--text-secondary)', marginBottom: '32px', fontSize: '13px' }}>
                     Add a candidate before their scheduled interview.
@@ -27,7 +37,8 @@ export default function CandidatePage() {
 
                 <div style={{
                     background: 'var(--bg-surface)',
-                    border: '2px solid var(--border)',
+                    border: '1px solid var(--border)',
+                    boxShadow: 'var(--shadow-card)',
                     borderRadius: 'var(--radius-lg)',
                     padding: '32px',
                 }}>
@@ -68,6 +79,8 @@ export default function CandidatePage() {
                             disabled={!name || !email}
                             style={{
                                 background: 'var(--accent)',
+                                backgroundImage: 'var(--accent-gradient)',
+                                boxShadow: 'var(--accent-glow)',
                                 color: '#fff',
                                 border: 'none',
                                 borderRadius: 'var(--radius)',
@@ -84,6 +97,7 @@ export default function CandidatePage() {
                     </div>
                 </div>
             </div>
+            </PageTransition>
         </div>
     )
 }

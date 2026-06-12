@@ -2,7 +2,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import zoom_webhook, jobs, sessions, questions  
+from app.api.routes import zoom_webhook, jobs, sessions, questions, auth, candidates, analysis, reports
 from app.api.websocket import connect_recruiter, disconnect_recruiter
 from app.db.crud import get_active_sessions, get_session_history, get_questions_for_session
 from app.ml.stream.rtmp_consumer import consume_stream
@@ -13,13 +13,22 @@ async def lifespan(app: FastAPI):
         active = get_active_sessions()
         for session in active:
             if session.zoom_meeting_id:
-                rtmp_url = f"rtmp://localhost:1935/live/{session.zoom_meeting_id}"
+                rtmp_url = f"rtmp://localhost:1935/stream/{session.zoom_meeting_id}"
                 print(f"[STARTUP] Recovering consumer for session {session.id}")
                 asyncio.create_task(consume_stream(str(session.id), rtmp_url))
         print(f"[STARTUP] Recovery check done — {len(active)} active session(s) found")
     except Exception as e:
         # DB might not be ready yet — log and continue, don't crash the server
         print(f"[STARTUP] Could not check active sessions (DB unavailable?): {e}")
+
+    # Discover and register all metric plugins (Phase 10)
+    try:
+        from app.ml.analysis.registry import discover_metrics
+        discover_metrics()
+        print("[STARTUP] Metric plugins discovered")
+    except Exception as e:
+        print(f"[STARTUP] Metric discovery failed (non-fatal): {e}")
+
     yield
 
 
@@ -36,6 +45,10 @@ app.include_router(zoom_webhook.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(sessions.router, prefix="/api")
 app.include_router(questions.router, prefix="/api")
+app.include_router(auth.router, prefix="/api")
+app.include_router(candidates.router, prefix="/api")
+app.include_router(analysis.router, prefix="/api")
+app.include_router(reports.router, prefix="/api")
 
 
 @app.get("/health")

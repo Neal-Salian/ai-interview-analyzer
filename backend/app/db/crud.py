@@ -10,6 +10,8 @@ from app.db.models import (
     Session as InterviewSession,
     Candidate,
 )
+from sqlalchemy.orm import joinedload
+
 
 
 # ── Stream pipeline writes ────────────────────────────────────────────────────
@@ -40,6 +42,45 @@ def save_transcript(session_id: str, text: str):
             timestamp=datetime.datetime.utcnow()
         )
         db.add(chunk)
+        db.commit()
+    finally:
+        db.close()
+
+
+def save_attention(session_id: str, attention: dict):
+    """Save a single attention event (gaze direction + head pose) to the DB."""
+    db = SessionLocal()
+    try:
+        from app.db.models import AttentionEvent
+        event = AttentionEvent(
+            id=uuid.uuid4(),
+            session_id=session_id,
+            direction=attention.get("direction", "missing"),
+            confidence=attention.get("confidence", 0.0),
+            yaw=attention.get("yaw"),
+            pitch=attention.get("pitch"),
+            timestamp=datetime.datetime.utcnow()
+        )
+        db.add(event)
+        db.commit()
+    finally:
+        db.close()
+
+
+def save_integrity_event(session_id: str, event_data: dict):
+    """Save a single integrity event (multi-face, liveness, voice anomaly)."""
+    db = SessionLocal()
+    try:
+        from app.db.models import IntegrityEvent
+        event = IntegrityEvent(
+            id=uuid.uuid4(),
+            session_id=session_id,
+            event_type=event_data.get("event_type", "unknown"),
+            severity=event_data.get("severity", "info"),
+            details=event_data.get("details"),
+            timestamp=datetime.datetime.utcnow()
+        )
+        db.add(event)
         db.commit()
     finally:
         db.close()
@@ -77,15 +118,15 @@ def get_job(job_id: str):
 def get_todays_sessions():
     db = SessionLocal()
     try:
-        today = datetime.date.today()
-        return db.query(InterviewSession).filter(
-            InterviewSession.scheduled_at >= datetime.datetime.combine(
-                today, datetime.time.min
-            ),
-            InterviewSession.scheduled_at <= datetime.datetime.combine(
-                today, datetime.time.max
+        return (
+            db.query(InterviewSession)
+            .options(
+                joinedload(InterviewSession.candidate),
+                joinedload(InterviewSession.job)
             )
-        ).all()
+            .order_by(InterviewSession.started_at.desc())
+            .all()
+        )
     finally:
         db.close()
 

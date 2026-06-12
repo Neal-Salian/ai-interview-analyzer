@@ -25,15 +25,39 @@ export interface SuggestedQuestion {
     created_at: string
 }
 
+// Extensible metric framework — Phase 10
+// Every behavioral metric returns this standardized shape.
+// The frontend renders metrics dynamically using this interface.
+export interface MetricResult {
+    name: string
+    score: number
+    level: string
+    confidence: number
+    evidence: { quote: string; timestamp: string; source: string }[]
+    explanation: string
+    signals_used: string[]
+}
+
 export interface WSMessage {
-    type: 'history' | 'emotion' | 'transcript' | 'question' | 'ping'
+    type: 'history' | 'emotion' | 'transcript' | 'question' | 'metric_update' | 'ping' | 'attention' | 'integrity_alert' | 'sentiment'
     // history
     emotions?: EmotionFrame[]
     transcripts?: TranscriptChunk[]
+    questions?: SuggestedQuestion[]
     // live
     dominant_emotion?: string
     confidence?: number
     text?: string
     question?: SuggestedQuestion
+    metric?: MetricResult
     timestamp?: string
+    // attention
+    direction?: string
+    // integrity_alert
+    event_type?: string
+    severity?: string
+    details?: string
+    // sentiment
+    label?: string
+    score?: number
 }

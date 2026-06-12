@@ -129,7 +129,7 @@ async def zoom_webhook(
         db.commit()
 
         session_id = str(session.id)
-        rtmp_url = f"rtmp://localhost:1935/live/{meeting_id}"
+        rtmp_url = f"rtmp://localhost:1935/stream/{meeting_id}"
 
         # Launch consumer and immediately register it in the task registry
         # so teardown_session() can cancel it by session_id

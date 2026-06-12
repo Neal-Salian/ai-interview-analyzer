@@ -1,0 +1,37 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Metric Configuration
+# ──────────────────────────────────────────────────────────────────────────────
+#
+# Controls which behavioral metrics are enabled for interview analysis.
+# Metric names must match the registered name (lowercase, underscored).
+#
+# Adding a new metric:
+#   1. Create app/ml/analysis/metrics/your_metric.py
+#   2. Add the metric key below under enabled_metrics
+#
+# Disabling a metric:
+#   Comment it out or remove it from the list below.
+#
+# No code changes required — just edit this file and restart the server.
+# ──────────────────────────────────────────────────────────────────────────────
+
+enabled_metrics:
+  - confidence
+  - engagement
+  - stress_indicators
+  - attention
+  - communication
+  - emotional_stability
+  - leadership
+  - teamwork
+  - adaptability
+
+  # ── Future metrics (uncomment when implemented) ──────────────────────────
+  # - ownership
+  # - accountability
+  # - curiosity
+  # - decision_making
+  # - resilience
+  # - communication_clarity
+  # - technical_depth
+  # - system_thinking

@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import Navbar from '../components/Navbar'
 import type { EmotionFrame, TranscriptChunk, SuggestedQuestion, WSMessage } from '../types'
+import client from '../api/client'
+import PageTransition from '../components/PageTransition';
+import { SkeletonCard, SkeletonText } from '../components/Skeleton';
 
 const EMOTION_COLOR: Record<string, string> = {
     happy: '#34d399',
@@ -14,13 +17,6 @@ const EMOTION_COLOR: Record<string, string> = {
     disgust: '#a78bfa',
 }
 
-// Mock questions since questions pipeline isn't built yet
-const MOCK_QUESTIONS: SuggestedQuestion[] = [
-    { id: '1', question_text: 'Can you walk me through a specific example of a challenging project you led?', triggered_by: 'leadership experience', was_asked: false, created_at: '' },
-    { id: '2', question_text: 'How did you handle the technical debt you mentioned?', triggered_by: 'technical debt', was_asked: false, created_at: '' },
-    { id: '3', question_text: 'What metrics did you use to measure success in that role?', triggered_by: 'success metrics', was_asked: false, created_at: '' },
-]
-// TODO: remove when WebSocket is live with real session
 const MOCK_EMOTIONS: EmotionFrame[] = [
     { dominant_emotion: 'neutral', confidence: 72.5, timestamp: new Date(Date.now() - 120000).toISOString() },
     { dominant_emotion: 'happy', confidence: 85.3, timestamp: new Date(Date.now() - 90000).toISOString() },
@@ -44,17 +40,39 @@ export default function LiveDashboard() {
     const [questions, setQuestions] = useState<SuggestedQuestion[]>([])
     const [currentEmotion, setCurrentEmotion] = useState<string>('—')
     const [currentConfidence, setCurrentConfidence] = useState<number>(0)
+    const [currentAttention, setCurrentAttention] = useState<string>('—')
+    const [currentSentiment, setCurrentSentiment] = useState<string>('—')
+    const [integrityAlerts, setIntegrityAlerts] = useState<{event_type: string, severity: string, details: string, timestamp: string}[]>([])
     const [connected, setConnected] = useState(false)
+    const [sessionInfo, setSessionInfo] = useState<{ candidate: string, job: string } | null>(null)
     const transcriptRef = useRef<HTMLDivElement>(null)
     const wsRef = useRef<WebSocket | null>(null)
 
-    // Chart data — last 20 emotion readings as confidence over time
     const chartData = emotions.slice(-20).map((e, i) => ({
         t: i,
         confidence: Math.round(e.confidence),
         emotion: e.dominant_emotion,
     }))
 
+    const navigate = useNavigate()
+    const [loading, setLoading] = useState(true)
+
+    // Fetch session info
+    useEffect(() => {
+        if (!sessionId) return
+        Promise.all([
+            client.get(`/sessions/${sessionId}`),
+            new Promise(resolve => setTimeout(resolve, 500))
+        ])
+            .then(([res]) => setSessionInfo({
+                candidate: res.data.candidate || 'Unknown',
+                job: res.data.job || 'No role specified'
+            }))
+            .catch(err => console.error('Failed to fetch session info', err))
+            .finally(() => setLoading(false))
+    }, [sessionId])
+
+    // WebSocket
     useEffect(() => {
         if (!sessionId) return
 
@@ -64,7 +82,6 @@ export default function LiveDashboard() {
         ws.onopen = () => setConnected(true)
         ws.onclose = () => {
             setConnected(false)
-            // Load mock data if WebSocket closed with no real data
             setEmotions(prev => prev.length === 0 ? MOCK_EMOTIONS : prev)
             setTranscripts(prev => prev.length === 0 ? MOCK_TRANSCRIPTS : prev)
             if (MOCK_EMOTIONS.length) {
@@ -108,12 +125,30 @@ export default function LiveDashboard() {
                 }
                 setTranscripts(prev => [...prev, chunk])
             }
+
             if (msg.type === 'question' && msg.question) {
                 setQuestions(prev => {
                     const exists = prev.find(q => q.id === msg.question!.id)
                     if (exists) return prev
                     return [...prev, msg.question!]
                 })
+            }
+
+            if (msg.type === 'attention' && msg.direction) {
+                setCurrentAttention(msg.direction)
+            }
+
+            if (msg.type === 'sentiment' && msg.label) {
+                setCurrentSentiment(msg.label)
+            }
+
+            if (msg.type === 'integrity_alert' && msg.event_type) {
+                setIntegrityAlerts(prev => [...prev, {
+                    event_type: msg.event_type!,
+                    severity: msg.severity || 'warning',
+                    details: msg.details || '',
+                    timestamp: new Date().toISOString()
+                }].slice(-5)) // Keep last 5
             }
         }
 
@@ -130,7 +165,7 @@ export default function LiveDashboard() {
     const markAsked = async (id: string) => {
         setQuestions(prev => prev.map(q => q.id === id ? { ...q, was_asked: true } : q))
         try {
-            await fetch(`/api/questions/${id}/asked`, { method: 'PATCH' })
+            await client.patch(`/questions/${id}/asked`)
         } catch (e) {
             console.error('Failed to mark question as asked', e)
         }
@@ -138,16 +173,54 @@ export default function LiveDashboard() {
 
     const emotionColor = EMOTION_COLOR[currentEmotion] ?? 'var(--text-secondary)'
 
+    if (loading) {
+        return (
+            <div>
+                <Navbar />
+                <PageTransition>
+                    <div style={{ padding: '24px', display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: 'auto 1fr', gap: '16px', maxWidth: '1400px', margin: '0 auto' }}>
+                        <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div>
+                                <SkeletonText width="200px" height="24px" style={{ marginBottom: '8px' }} />
+                                <SkeletonText width="150px" height="16px" />
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <SkeletonText width="80px" height="20px" />
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            <SkeletonCard style={{ height: '180px' }} />
+                            <SkeletonCard style={{ height: '250px', flex: 1 }} />
+                            <SkeletonCard style={{ height: '200px' }} />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            <SkeletonCard style={{ height: '600px', flex: 1 }} />
+                        </div>
+                    </div>
+                </PageTransition>
+            </div>
+        )
+    }
+
     return (
         <div>
             <Navbar />
+            <PageTransition>
             <div style={{ padding: '24px', display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: 'auto 1fr', gap: '16px', maxWidth: '1400px', margin: '0 auto' }}>
 
                 {/* Header */}
                 <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div>
-                        <h1 style={{ fontSize: '20px', fontWeight: 700, fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}>Live Interview</h1>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Session {sessionId?.slice(0, 8)}...</p>
+                        <button onClick={() => navigate('/sessions')} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, padding: '0 0 8px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>arrow_back</span>
+                            Back to Sessions
+                        </button>
+                        <h1 style={{ fontSize: '20px', fontWeight: 700, fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}>
+                            {sessionInfo?.candidate ?? 'Live Interview'}
+                        </h1>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
+                            {sessionInfo?.job ?? `Session ${sessionId?.slice(0, 8)}...`}
+                        </p>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span style={{
@@ -167,23 +240,30 @@ export default function LiveDashboard() {
 
                     {/* Current emotion card */}
                     <div style={cardStyle}>
-                        <div style={{ fontSize: '14px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', fontWeight: 700, fontFamily: 'var(--font-heading)', }}>
-                            Current Emotion
+                        <div style={{ fontSize: '14px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', fontWeight: 700, fontFamily: 'var(--font-heading)' }}>
+                            Live Vitals
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                            <div style={{
-                                fontSize: '40px', fontWeight: 700, color: emotionColor,
-                                textTransform: 'capitalize',
-                            }}>
-                                {currentEmotion}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                            <div>
+                                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Emotion</div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <div style={{ fontSize: '24px', fontWeight: 700, color: emotionColor, textTransform: 'capitalize' }}>
+                                        {currentEmotion}
+                                    </div>
+                                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{currentConfidence.toFixed(1)}%</div>
+                                </div>
                             </div>
-                            <div style={{
-                                fontSize: '13px', color: 'var(--text-secondary)',
-                                background: 'var(--bg)',
-                                padding: '4px 12px',
-                                borderRadius: '20px',
-                            }}>
-                                {currentConfidence.toFixed(1)}% confidence
+                            <div>
+                                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Attention</div>
+                                <div style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', textTransform: 'capitalize' }}>
+                                    {currentAttention}
+                                </div>
+                            </div>
+                            <div>
+                                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Sentiment</div>
+                                <div style={{ fontSize: '18px', fontWeight: 600, color: currentSentiment === 'POSITIVE' ? 'var(--success)' : currentSentiment === 'NEGATIVE' ? 'var(--danger)' : 'var(--text-primary)', textTransform: 'capitalize' }}>
+                                    {currentSentiment}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -194,8 +274,12 @@ export default function LiveDashboard() {
                             Emotions Over Time
                         </div>
                         {chartData.length === 0 ? (
-                            <div style={{ color: 'var(--text-secondary)', fontSize: '13px', textAlign: 'center', paddingTop: '40px' }}>
-                                Waiting for stream...
+                            <div style={{
+                                flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                                border: '1px dashed var(--border)', borderRadius: 'var(--radius)', padding: '2rem', minHeight: '150px', marginTop: '10px'
+                            }}>
+                                <span className="material-symbols-outlined" style={{ color: 'var(--text-secondary)', fontSize: '24px', marginBottom: '8px' }}>monitoring</span>
+                                <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Waiting for stream...</span>
                             </div>
                         ) : (
                             <ResponsiveContainer width="100%" height={200}>
@@ -206,7 +290,7 @@ export default function LiveDashboard() {
                                         contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '12px' }}
                                         formatter={(val, _name, props) => [`${val}%`, props.payload.emotion]}
                                     />
-                                    <Line type="monotone" dataKey="confidence" stroke="#0055ff" strokeWidth={2} dot={false} />
+                                    <Line type="monotone" dataKey="confidence" stroke="var(--accent)" strokeWidth={2} dot={false} />
                                 </LineChart>
                             </ResponsiveContainer>
                         )}
@@ -216,7 +300,6 @@ export default function LiveDashboard() {
                     <div style={cardStyle}>
                         <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', fontFamily: 'var(--font-heading)' }}>
                             Suggested Questions
-                            <span style={{ marginLeft: '8px', color: 'var(--text-secondary)', fontStyle: 'italic', textTransform: 'none', fontSize: '11px' }}></span>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                             {questions.map(q => (
@@ -238,6 +321,8 @@ export default function LiveDashboard() {
                                             style={{
                                                 flexShrink: 0,
                                                 background: 'var(--accent)',
+                                                backgroundImage: 'var(--accent-gradient)',
+                                                boxShadow: 'var(--accent-glow)',
                                                 color: '#ffffff',
                                                 border: 'none',
                                                 borderRadius: 'var(--radius)',
@@ -258,32 +343,45 @@ export default function LiveDashboard() {
                 </div>
 
                 {/* Right column — transcript */}
-                <div style={cardStyle}>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', fontFamily: 'var(--font-heading)' }}>
-                        Live Transcript
-                    </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {integrityAlerts.length > 0 && (
+                        <div style={{ ...cardStyle, borderColor: 'var(--danger)', borderLeftWidth: '4px' }}>
+                            <div style={{ fontSize: '12px', color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px', fontFamily: 'var(--font-heading)', fontWeight: 700 }}>
+                                ⚠️ Integrity Alerts
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                {integrityAlerts.map((alert, i) => (
+                                    <div key={i} style={{ fontSize: '13px', background: 'var(--bg)', padding: '8px', borderRadius: '4px' }}>
+                                        <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{alert.event_type}</span>
+                                        {alert.details && <span style={{ color: 'var(--text-secondary)', marginLeft: '8px' }}>— {alert.details}</span>}
+                                        <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                                            {new Date(alert.timestamp).toLocaleTimeString()}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    <div style={{ ...cardStyle, flex: 1 }}>
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', fontFamily: 'var(--font-heading)' }}>
+                            Live Transcript
+                        </div>
                     <div
                         ref={transcriptRef}
-                        style={{
-                            height: '600px',
-                            overflowY: 'auto',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '12px',
-                        }}
+                        style={{ height: '600px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}
                     >
                         {transcripts.length === 0 && (
-                            <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
-                                Transcript will appear here as the candidate speaks...
-                            </p>
+                            <div style={{
+                                flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                                border: '1px dashed var(--border)', borderRadius: 'var(--radius)', padding: '2rem', marginTop: '10px'
+                            }}>
+                                <span className="material-symbols-outlined" style={{ color: 'var(--text-secondary)', fontSize: '24px', marginBottom: '8px' }}>forum</span>
+                                <span style={{ color: 'var(--text-secondary)', fontSize: '13px', textAlign: 'center' }}>Transcript will appear here as the candidate speaks...</span>
+                            </div>
                         )}
                         {transcripts.map((chunk, i) => (
-                            <div key={i} style={{
-                                background: 'var(--bg)',
-                                border: '1px solid var(--border)',
-                                borderRadius: 'var(--radius)',
-                                padding: '12px',
-                            }}>
+                            <div key={i} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '12px' }}>
                                 <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
                                     {new Date(chunk.timestamp).toLocaleTimeString()}
                                 </div>
@@ -291,16 +389,19 @@ export default function LiveDashboard() {
                             </div>
                         ))}
                     </div>
+                    </div>
                 </div>
 
             </div>
+            </PageTransition>
         </div>
     )
 }
 
 const cardStyle: React.CSSProperties = {
     background: 'var(--bg-surface)',
-    border: '2px solid var(--border)',
+    border: '1px solid var(--border)',
+    boxShadow: 'var(--shadow-card)',
     borderRadius: 'var(--radius-lg)',
     padding: '20px',
 }

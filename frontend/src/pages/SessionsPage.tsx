@@ -1,49 +1,75 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
-
-// Extended session type for the new UI data requirements
+import client from '../api/client'
+import { useTheme } from '../context/ThemeContext';
+import PageTransition from '../components/PageTransition';
+import { SessionCardSkeleton } from '../components/Skeleton';// Extended session type for the new UI data requirements
 interface EnhancedSession {
-    session_id: string;
-    candidate: string;
-    job: string;
-    scheduled_at: string;
-    status: 'active' | 'completed';
-    metrics?: { sentiment: number; talkCandidate: number; talkInterviewer: number };
-    tags?: string[];
+    session_id: string
+    candidate: string | null
+    job: string | null
+    scheduled_at: string | null
+    status: 'active' | 'completed' | 'scheduled'
+    metrics?: { sentiment: number; talkCandidate: number; talkInterviewer: number }
+    tags?: string[]
 }
 
 export default function SessionsPage() {
+    const [showNewSession, setShowNewSession] = useState(false)
+    const [candidates, setCandidates] = useState<{ id: string, name: string }[]>([])
+    const [selectedCandidate, setSelectedCandidate] = useState('')
+    const [creating, setCreating] = useState(false)
     const [sessions, setSessions] = useState<EnhancedSession[]>([]);
+    const [scheduledAt, setScheduledAt] = useState('')
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
+    const { theme } = useTheme();
 
     useEffect(() => {
-        // Mock data perfectly matching the screenshot
-        const MOCK_SESSIONS: EnhancedSession[] = [
-            {
-                session_id: 'sess_1',
-                candidate: 'Elena Rostova',
-                job: 'Senior Machine Learning Engineer',
-                scheduled_at: '10:00 AM - 11:30 AM',
-                status: 'active',
-                metrics: { sentiment: 75, talkCandidate: 42, talkInterviewer: 58 }
-            },
-            {
-                session_id: 'sess_2',
-                candidate: 'Priya Sharma',
-                job: 'Product Manager, Platform',
-                scheduled_at: '08:30 AM - 09:15 AM',
-                status: 'completed',
-                tags: ['Confident', 'Analytical']
+        const fetchSessions = async () => {
+            try {
+                // Enforce a minimum 800ms loading time so the skeleton animation can be seen
+                const [res] = await Promise.all([
+                    client.get('/sessions/today'),
+                    new Promise(resolve => setTimeout(resolve, 500))
+                ])
+                setSessions(res.data)
+            } catch (err) {
+                console.error('Failed to fetch sessions', err)
+            } finally {
+                setLoading(false)
             }
-        ];
+        }
+        fetchSessions()
+    }, [])
+    const fetchCandidates = async () => {
+        try {
+            const res = await client.get('/candidates')
+            setCandidates(res.data)
+        } catch (err) {
+            console.error('Failed to fetch candidates', err)
+        }
+    }
 
-        setTimeout(() => {
-            setSessions(MOCK_SESSIONS);
-            setLoading(false);
-        }, 400);
-    }, []);
+    const handleNewSession = async () => {
+        if (!selectedCandidate) return
+        setCreating(true)
+        try {
+            await client.post('/sessions', {
+                candidate_id: selectedCandidate,
+                scheduled_at: scheduledAt || new Date().toISOString()
+            })
+            setShowNewSession(false)
+            setSelectedCandidate('')
+            const res = await client.get('/sessions/today')
+            setSessions(res.data)
+        } catch (err) {
+            console.error('Failed to create session', err)
+        } finally {
+            setCreating(false)
+        }
+    }
 
     const currentDate = new Date().toLocaleDateString('en-US', {
         weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
@@ -53,7 +79,8 @@ export default function SessionsPage() {
         <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: 'var(--bg)', color: 'var(--text-primary)' }}>
             <Navbar />
 
-            <main style={{ padding: '2rem', maxWidth: '1600px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+            <PageTransition>
+                <main style={{ padding: '2rem', maxWidth: '1600px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
 
                 {/* Page Header */}
                 <div style={{
@@ -83,13 +110,18 @@ export default function SessionsPage() {
                             <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>refresh</span>
                         </button>
 
-                        <button style={{
-                            display: 'flex', alignItems: 'center', gap: '0.5rem',
-                            backgroundColor: 'var(--accent)', color: '#ffffff',
-                            border: 'none', padding: '0 1rem', height: '40px',
-                            borderRadius: 'var(--radius-sm, 6px)', fontWeight: 500,
-                            fontSize: '13px', cursor: 'pointer'
-                        }}>
+                        <button
+                            onClick={() => {
+                                fetchCandidates()
+                                setShowNewSession(true)
+                            }}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                backgroundColor: 'var(--accent)', backgroundImage: 'var(--accent-gradient)', boxShadow: 'var(--accent-glow)', color: '#ffffff',
+                                border: 'none', padding: '0 1rem', height: '40px',
+                                borderRadius: 'var(--radius-sm, 6px)', fontWeight: 500,
+                                fontSize: '13px', cursor: 'pointer'
+                            }}>
                             <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add</span>
                             New Session
                         </button>
@@ -97,7 +129,15 @@ export default function SessionsPage() {
                 </div>
 
                 {loading ? (
-                    <p style={{ color: 'var(--text-secondary)' }}>Loading schedule...</p>
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))',
+                        gap: '1.5rem'
+                    }}>
+                        {[1, 2, 3].map((i) => (
+                            <SessionCardSkeleton key={i} />
+                        ))}
+                    </div>
                 ) : (
                     /* Grid Layout */
                     <div style={{
@@ -112,12 +152,13 @@ export default function SessionsPage() {
                                 backgroundColor: 'var(--bg-surface)',
                                 borderRadius: '10px',
                                 border: '1px solid var(--border)',
+                                boxShadow: 'var(--shadow-card)',
                                 padding: '1.5rem',
                                 display: 'flex',
                                 flexDirection: 'column',
                                 gap: '1.25rem',
                                 opacity: session.status === 'completed' ? 0.8 : 1,
-                                transition: 'opacity 0.2s'
+                                transition: 'opacity 0.2s, var(--theme-transition)'
                             }}
                                 onMouseEnter={e => e.currentTarget.style.opacity = '1'}
                                 onMouseLeave={e => e.currentTarget.style.opacity = session.status === 'completed' ? '0.8' : '1'}
@@ -180,7 +221,7 @@ export default function SessionsPage() {
                                             onClick={() => navigate(`/sessions/${session.session_id}/live`)}
                                             style={{
                                                 width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
-                                                backgroundColor: 'var(--accent)', color: '#fff', border: 'none', padding: '0.75rem',
+                                                backgroundColor: 'var(--accent)', backgroundImage: 'var(--accent-gradient)', boxShadow: 'var(--accent-glow)', color: '#fff', border: 'none', padding: '0.75rem',
                                                 borderRadius: '6px', fontWeight: 500, cursor: 'pointer', fontSize: '13px'
                                             }}
                                         >
@@ -245,6 +286,88 @@ export default function SessionsPage() {
                     </div>
                 )}
             </main>
+            </PageTransition>
+            {showNewSession && (
+                <div style={{
+                    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    zIndex: 200
+                }}>
+                    <div style={{
+                        background: 'var(--bg-surface)', border: '1px solid var(--border)',
+                        borderRadius: '10px', padding: '32px', width: '400px'
+                    }}>
+                        <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '24px' }}>
+                            New Session
+                        </h2>
+                        <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>
+                            Select Candidate
+                        </label>
+                        <select
+                            value={selectedCandidate}
+                            onChange={e => setSelectedCandidate(e.target.value)}
+                            style={{
+                                width: '100%', background: 'var(--bg)',
+                                border: '1px solid var(--border)', borderRadius: '6px',
+                                padding: '10px', color: 'var(--text-primary)',
+                                fontSize: '14px', marginBottom: '24px'
+                            }}
+                        >
+                            <option value="">Choose a candidate...</option>
+                            {candidates.map(c => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                        </select>
+                        <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>
+                            Schedule Date & Time
+                        </label>
+                        <input
+                            type="datetime-local"
+                            value={scheduledAt}
+                            onChange={e => setScheduledAt(e.target.value)}
+                            style={{
+                                width: '100%',
+                                background: 'var(--bg)',
+                                border: '1px solid var(--border)',
+                                borderRadius: '6px',
+                                padding: '10px',
+                                color: 'var(--text-primary)',
+                                fontSize: '14px',
+                                marginBottom: '24px',
+                                colorScheme: theme
+                            }}
+                        />
+                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                            <button
+                                onClick={() => {
+                                    setShowNewSession(false)
+                                    setSelectedCandidate('')
+                                    setScheduledAt('')
+                                }}
+                                style={{
+                                    background: 'var(--bg)', border: '1px solid var(--border)',
+                                    borderRadius: '6px', padding: '8px 16px',
+                                    color: 'var(--text-secondary)', cursor: 'pointer'
+                                }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleNewSession}
+                                disabled={!selectedCandidate || creating}
+                                style={{
+                                    background: 'var(--accent)', backgroundImage: 'var(--accent-gradient)', boxShadow: 'var(--accent-glow)', border: 'none',
+                                    borderRadius: '6px', padding: '8px 16px',
+                                    color: '#fff', cursor: 'pointer', fontWeight: 600,
+                                    opacity: !selectedCandidate || creating ? 0.5 : 1
+                                }}
+                            >
+                                {creating ? 'Creating...' : 'Create Session'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
