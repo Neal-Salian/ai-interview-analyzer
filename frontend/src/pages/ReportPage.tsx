@@ -5,6 +5,8 @@ import Navbar from '../components/Navbar';
 import ReportChat from '../components/ReportChat';
 import client from '../api/client';
 import type { MetricResult } from '../types';
+import PageTransition from '../components/PageTransition';
+import { SkeletonCard, SkeletonText } from '../components/Skeleton';
 
 interface Analysis {
     session_id: string
@@ -61,8 +63,11 @@ export default function ReportPage() {
 
     useEffect(() => {
         if (!sessionId) return
-        client.get(`/analysis/${sessionId}`)
-            .then(res => setAnalysis(res.data))
+        Promise.all([
+            client.get(`/analysis/${sessionId}`),
+            new Promise(resolve => setTimeout(resolve, 500))
+        ])
+            .then(([res]) => setAnalysis(res.data))
             .catch(err => {
                 console.error('Failed to load analysis', err)
                 setError('Could not load analysis data.')
@@ -72,11 +77,30 @@ export default function ReportPage() {
 
     if (loading) {
         return (
-            <div>
+            <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: 'var(--bg)', color: 'var(--text-primary)' }}>
                 <Navbar />
-                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh', color: 'var(--text-secondary)' }}>
-                    Loading report...
-                </div>
+                <PageTransition>
+                    <header style={{ padding: '2rem', borderBottom: '1px solid var(--border)' }}>
+                        <SkeletonText width="300px" height="28px" style={{ marginBottom: '16px' }} />
+                        <div style={{ display: 'flex', gap: '2rem' }}>
+                            <SkeletonText width="100px" height="20px" />
+                            <SkeletonText width="80px" height="20px" />
+                            <SkeletonText width="120px" height="20px" />
+                        </div>
+                    </header>
+                    <main style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem', padding: '2rem', flex: 1 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                            <SkeletonCard style={{ height: '180px' }} />
+                            <SkeletonCard style={{ height: '280px' }} />
+                            <SkeletonCard style={{ height: '220px' }} />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                            <SkeletonCard style={{ height: '250px' }} />
+                            <SkeletonCard style={{ height: '200px' }} />
+                            <SkeletonCard style={{ height: '180px' }} />
+                        </div>
+                    </main>
+                </PageTransition>
             </div>
         );
     }
@@ -130,12 +154,14 @@ export default function ReportPage() {
         <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: 'var(--bg)', color: 'var(--text-primary)' }}>
             <Navbar />
 
+            <PageTransition>
             {/* Page Header */}
             <header style={{ padding: '2rem', borderBottom: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                        <button onClick={() => navigate('/sessions')} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '20px' }}>
-                            ←
+                        <button onClick={() => navigate('/sessions')} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 500, paddingRight: '12px' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>arrow_back</span>
+                            Back to Sessions
                         </button>
                         <h1 style={{ fontSize: '22px', fontWeight: 600, margin: 0 }}>
                             {analysis.candidate ?? 'Unknown Candidate'} — Session Report
@@ -367,6 +393,7 @@ export default function ReportPage() {
 
                 </div>
             </main>
+            </PageTransition>
         </div>
     );
 }

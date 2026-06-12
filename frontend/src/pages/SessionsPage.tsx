@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import client from '../api/client'
 import { useTheme } from '../context/ThemeContext';
-
-// Extended session type for the new UI data requirements
+import PageTransition from '../components/PageTransition';
+import { SessionCardSkeleton } from '../components/Skeleton';// Extended session type for the new UI data requirements
 interface EnhancedSession {
     session_id: string
     candidate: string | null
@@ -79,7 +79,8 @@ export default function SessionsPage() {
         <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: 'var(--bg)', color: 'var(--text-primary)' }}>
             <Navbar />
 
-            <main style={{ padding: '2rem', maxWidth: '1600px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+            <PageTransition>
+                <main style={{ padding: '2rem', maxWidth: '1600px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
 
                 {/* Page Header */}
                 <div style={{
@@ -134,31 +135,7 @@ export default function SessionsPage() {
                         gap: '1.5rem'
                     }}>
                         {[1, 2, 3].map((i) => (
-                            <div key={i} className="animate-pulse" style={{
-                                backgroundColor: 'var(--bg-surface)',
-                                borderRadius: '10px',
-                                border: '1px solid var(--border)',
-                                padding: '1.5rem',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '1.25rem',
-                            }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <div>
-                                        <div style={{ width: '140px', height: '22px', backgroundColor: 'var(--border)', borderRadius: '4px', marginBottom: '8px' }}></div>
-                                        <div style={{ width: '100px', height: '16px', backgroundColor: 'var(--bg)', borderRadius: '4px', marginBottom: '6px' }}></div>
-                                        <div style={{ width: '80px', height: '16px', backgroundColor: 'var(--bg)', borderRadius: '4px' }}></div>
-                                    </div>
-                                    <div style={{ width: '80px', height: '24px', backgroundColor: 'var(--border)', borderRadius: '12px' }}></div>
-                                </div>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: 'auto' }}>
-                                    <div style={{ width: '100%', height: '60px', backgroundColor: 'var(--bg)', borderRadius: '6px' }}></div>
-                                    <div style={{ width: '100%', height: '60px', backgroundColor: 'var(--bg)', borderRadius: '6px' }}></div>
-                                </div>
-                                <div style={{ marginTop: 'auto', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
-                                    <div style={{ width: '100%', height: '36px', backgroundColor: 'var(--border)', borderRadius: '6px' }}></div>
-                                </div>
-                            </div>
+                            <SessionCardSkeleton key={i} />
                         ))}
                     </div>
                 ) : (
@@ -309,6 +286,7 @@ export default function SessionsPage() {
                     </div>
                 )}
             </main>
+            </PageTransition>
             {showNewSession && (
                 <div style={{
                     position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',

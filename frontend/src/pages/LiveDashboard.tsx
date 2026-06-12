@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import Navbar from '../components/Navbar'
 import type { EmotionFrame, TranscriptChunk, SuggestedQuestion, WSMessage } from '../types'
 import client from '../api/client'
+import PageTransition from '../components/PageTransition';
+import { SkeletonCard, SkeletonText } from '../components/Skeleton';
 
 const EMOTION_COLOR: Record<string, string> = {
     happy: '#34d399',
@@ -52,15 +54,22 @@ export default function LiveDashboard() {
         emotion: e.dominant_emotion,
     }))
 
+    const navigate = useNavigate()
+    const [loading, setLoading] = useState(true)
+
     // Fetch session info
     useEffect(() => {
         if (!sessionId) return
-        client.get(`/sessions/${sessionId}`)
-            .then(res => setSessionInfo({
+        Promise.all([
+            client.get(`/sessions/${sessionId}`),
+            new Promise(resolve => setTimeout(resolve, 500))
+        ])
+            .then(([res]) => setSessionInfo({
                 candidate: res.data.candidate || 'Unknown',
                 job: res.data.job || 'No role specified'
             }))
             .catch(err => console.error('Failed to fetch session info', err))
+            .finally(() => setLoading(false))
     }, [sessionId])
 
     // WebSocket
@@ -164,14 +173,48 @@ export default function LiveDashboard() {
 
     const emotionColor = EMOTION_COLOR[currentEmotion] ?? 'var(--text-secondary)'
 
+    if (loading) {
+        return (
+            <div>
+                <Navbar />
+                <PageTransition>
+                    <div style={{ padding: '24px', display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: 'auto 1fr', gap: '16px', maxWidth: '1400px', margin: '0 auto' }}>
+                        <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div>
+                                <SkeletonText width="200px" height="24px" style={{ marginBottom: '8px' }} />
+                                <SkeletonText width="150px" height="16px" />
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <SkeletonText width="80px" height="20px" />
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            <SkeletonCard style={{ height: '180px' }} />
+                            <SkeletonCard style={{ height: '250px', flex: 1 }} />
+                            <SkeletonCard style={{ height: '200px' }} />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            <SkeletonCard style={{ height: '600px', flex: 1 }} />
+                        </div>
+                    </div>
+                </PageTransition>
+            </div>
+        )
+    }
+
     return (
         <div>
             <Navbar />
+            <PageTransition>
             <div style={{ padding: '24px', display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: 'auto 1fr', gap: '16px', maxWidth: '1400px', margin: '0 auto' }}>
 
                 {/* Header */}
                 <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div>
+                        <button onClick={() => navigate('/sessions')} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, padding: '0 0 8px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>arrow_back</span>
+                            Back to Sessions
+                        </button>
                         <h1 style={{ fontSize: '20px', fontWeight: 700, fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}>
                             {sessionInfo?.candidate ?? 'Live Interview'}
                         </h1>
@@ -231,8 +274,12 @@ export default function LiveDashboard() {
                             Emotions Over Time
                         </div>
                         {chartData.length === 0 ? (
-                            <div style={{ color: 'var(--text-secondary)', fontSize: '13px', textAlign: 'center', paddingTop: '40px' }}>
-                                Waiting for stream...
+                            <div style={{
+                                flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                                border: '1px dashed var(--border)', borderRadius: 'var(--radius)', padding: '2rem', minHeight: '150px', marginTop: '10px'
+                            }}>
+                                <span className="material-symbols-outlined" style={{ color: 'var(--text-secondary)', fontSize: '24px', marginBottom: '8px' }}>monitoring</span>
+                                <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Waiting for stream...</span>
                             </div>
                         ) : (
                             <ResponsiveContainer width="100%" height={200}>
@@ -325,9 +372,13 @@ export default function LiveDashboard() {
                         style={{ height: '600px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}
                     >
                         {transcripts.length === 0 && (
-                            <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
-                                Transcript will appear here as the candidate speaks...
-                            </p>
+                            <div style={{
+                                flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                                border: '1px dashed var(--border)', borderRadius: 'var(--radius)', padding: '2rem', marginTop: '10px'
+                            }}>
+                                <span className="material-symbols-outlined" style={{ color: 'var(--text-secondary)', fontSize: '24px', marginBottom: '8px' }}>forum</span>
+                                <span style={{ color: 'var(--text-secondary)', fontSize: '13px', textAlign: 'center' }}>Transcript will appear here as the candidate speaks...</span>
+                            </div>
                         )}
                         {transcripts.map((chunk, i) => (
                             <div key={i} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '12px' }}>
@@ -342,6 +393,7 @@ export default function LiveDashboard() {
                 </div>
 
             </div>
+            </PageTransition>
         </div>
     )
 }
