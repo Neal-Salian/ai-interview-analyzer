@@ -10,6 +10,7 @@ from app.db.database import get_db
 from app.db.crud import get_todays_sessions
 from app.db.models import Session as InterviewSession, Candidate, Job
 from app.api.deps import get_current_user
+from app.services.teardown import teardown_session
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -104,7 +105,7 @@ def get_session(
 
 
 @router.patch("/sessions/{session_id}/end")
-def end_session(
+async def end_session(
     session_id: str,
     db: DBSession = Depends(get_db),
     current_user=Depends(get_current_user)
@@ -117,10 +118,7 @@ def end_session(
     if session.status == "completed":
         raise HTTPException(status_code=400, detail="Session already completed")
 
-    session.status = "completed"
-    session.ended_at = datetime.datetime.utcnow()
-    db.commit()
-    db.refresh(session)
+    await teardown_session(session_id, db)
 
     logger.info(f"[sessions] ended session {session_id}")
     return {"session_id": session_id, "status": "completed"}
