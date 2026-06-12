@@ -115,10 +115,12 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
 
             if len(audio_buffer) >= 900:
                 try:
-                    transcript = await asyncio.to_thread(
-                        transcribe_chunk, audio_buffer
-                    )
+                    packets_to_process = audio_buffer.copy()
                     audio_buffer = []
+                    
+                    transcript = await asyncio.to_thread(
+                        transcribe_chunk, packets_to_process
+                    )
                     transcript_chunk_count += 1
 
                     # Phase 4: Vocabulary correction with job context
@@ -177,17 +179,12 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
 
                     # ── Phase 3: Voice anomaly detection ──────────────────────
                     try:
-                        import numpy as _np
                         from app.ml.integrity.voice_detector import detect_voice_anomaly
-                        # Build audio array from the packets we just transcribed
-                        # (audio_buffer was cleared above, use transcript's source)
-                        # We re-extract from the last batch for anomaly check
+                        from app.ml.speech.transcriber import get_audio_array
+                        
                         voice_result = await asyncio.to_thread(
                             detect_voice_anomaly,
-                            _np.concatenate([
-                                p.to_ndarray() for p in audio_buffer
-                            ]).flatten().astype(_np.float32)
-                            if audio_buffer else _np.array([], dtype=_np.float32),
+                            get_audio_array(packets_to_process)
                         )
                         if voice_result.get("anomaly_detected"):
                             await asyncio.to_thread(
