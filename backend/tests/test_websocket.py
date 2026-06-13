@@ -67,7 +67,7 @@ def setup_test_session_with_history() -> str:
             id=uuid.uuid4(),
             email=f"wstest_{uuid.uuid4().hex[:6]}@test.com",
             hashed_password="fake",
-            name="WS Test Recruiter"
+            full_name="WS Test Recruiter"
         )
         db.add(recruiter)
         db.commit()
