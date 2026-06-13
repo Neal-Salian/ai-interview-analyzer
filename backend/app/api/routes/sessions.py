@@ -11,6 +11,9 @@ from app.db.crud import get_todays_sessions
 from app.db.models import Session as InterviewSession, Candidate, Job
 from app.api.deps import get_current_user
 from app.services.teardown import teardown_session
+from app.api.routes.zoom_webhook import run_consumer_with_retry
+from app.core.registry import register_session, is_active
+import asyncio
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -65,7 +68,6 @@ def create_session(
         job_id=job.id if job else None,
         status="scheduled",
         scheduled_at=scheduled_at or datetime.datetime.utcnow(),
-        started_at=datetime.datetime.utcnow()
     )
     db.add(session)
     db.commit()
@@ -102,6 +104,34 @@ def get_session(
         "started_at": session.started_at,
         "ended_at": session.ended_at
     }
+
+
+@router.patch("/sessions/{session_id}/start")
+async def start_session(
+    session_id: str,
+    db: DBSession = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    session = db.query(InterviewSession).filter(
+        InterviewSession.id == session_id
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.status != "scheduled":
+        raise HTTPException(status_code=400, detail="Only scheduled sessions can be started")
+
+    session.status = "active"
+    session.started_at = datetime.datetime.utcnow()
+    db.commit()
+
+    if not is_active(session_id):
+        rtmp_url = f"rtmp://localhost:1935/stream/{session_id}"
+        consumer_task = asyncio.create_task(run_consumer_with_retry(session_id, rtmp_url))
+        register_session(session_id, consumer_task)
+        logger.info(f"[sessions] spawned consumer for session {session_id}")
+
+    logger.info(f"[sessions] started session {session_id}")
+    return {"session_id": session_id, "status": "active"}
 
 
 @router.patch("/sessions/{session_id}/end")

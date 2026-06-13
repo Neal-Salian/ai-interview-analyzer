@@ -25,7 +25,9 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
     logger.info(f"[CONSUMER] Opening stream: {rtmp_url}")
 
     try:
-        container = av.open(rtmp_url, options={"rtmp_live": "live"})
+        container = await asyncio.to_thread(
+            av.open, rtmp_url, options={"rtmp_live": "live"}
+        )
     except Exception as e:
         logger.error(f"[CONSUMER] Failed to open stream: {e}")
         return
