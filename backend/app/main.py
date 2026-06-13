@@ -1,7 +1,10 @@
 import asyncio
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
+from app.db.database import get_db
+from app.api.deps import get_current_user
 from app.api.routes import zoom_webhook, jobs, sessions, questions, auth, candidates, analysis, reports
 from app.api.websocket import connect_recruiter, disconnect_recruiter
 from app.db.crud import get_active_sessions, get_session_history, get_questions_for_session
@@ -57,7 +60,25 @@ def health():
 
 
 @app.websocket("/ws/live/{session_id}")
-async def websocket_endpoint(websocket: WebSocket, session_id: str):
+async def websocket_endpoint(
+    websocket: WebSocket, 
+    session_id: str,
+    token: str = Query(None),
+    db: Session = Depends(get_db)
+):
+    await websocket.accept()
+
+    if not token:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    try:
+        get_current_user(token=token, db=db)
+    except Exception:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    # Note: connect_recruiter no longer calls accept() since we accepted above
     await connect_recruiter(session_id, websocket)
     try:
         try:

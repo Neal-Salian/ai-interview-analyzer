@@ -18,9 +18,10 @@ import json
 import websockets
 
 from app.db.database import SessionLocal
-from app.db.models import Candidate, Session as InterviewSession
+from app.db.models import Candidate, Session as InterviewSession, Recruiter
 from app.db.crud import save_emotion, save_transcript
 from app.api.websocket import broadcast
+from app.core.security import create_access_token
 
 BASE_WS_URL = "ws://localhost:8001/ws/live"
 
@@ -62,9 +63,20 @@ def setup_test_session_with_history() -> str:
             "I have led teams of up to 10 engineers."
         )
 
+        recruiter = Recruiter(
+            id=uuid.uuid4(),
+            email=f"wstest_{uuid.uuid4().hex[:6]}@test.com",
+            hashed_password="fake",
+            name="WS Test Recruiter"
+        )
+        db.add(recruiter)
+        db.commit()
+
+        token = create_access_token({"sub": recruiter.email})
+
         print(f"[SETUP] Session: {session_id}")
         print(f"[SETUP] Pre-populated: 2 emotions, 1 transcript")
-        return session_id
+        return session_id, token
     finally:
         db.close()
 
@@ -74,9 +86,9 @@ async def recv_with_timeout(ws, timeout=8.0):
     return json.loads(raw)
 
 
-async def test_history_replay(session_id: str) -> bool:
+async def test_history_replay(session_id: str, token: str) -> bool:
     print(f"\n[TEST 1] History replay on connect...")
-    url = f"{BASE_WS_URL}/{session_id}"
+    url = f"{BASE_WS_URL}/{session_id}?token={token}"
 
     try:
         async with websockets.connect(url, open_timeout=10) as ws:
@@ -106,9 +118,9 @@ async def test_history_replay(session_id: str) -> bool:
         return False
 
 
-async def test_live_broadcast(session_id: str) -> bool:
+async def test_live_broadcast(session_id: str, token: str) -> bool:
     print(f"\n[TEST 2] Live broadcast...")
-    url = f"{BASE_WS_URL}/{session_id}"
+    url = f"{BASE_WS_URL}/{session_id}?token={token}"
 
     try:
         async with websockets.connect(url, open_timeout=10) as ws:
@@ -141,9 +153,9 @@ async def test_live_broadcast(session_id: str) -> bool:
         return False
 
 
-async def test_reconnect_gets_history(session_id: str) -> bool:
+async def test_reconnect_gets_history(session_id: str, token: str) -> bool:
     print(f"\n[TEST 3] Reconnect gets full history...")
-    url = f"{BASE_WS_URL}/{session_id}"
+    url = f"{BASE_WS_URL}/{session_id}?token={token}"
 
     # First connection — drain and disconnect
     async with websockets.connect(url, open_timeout=10) as ws:
@@ -170,12 +182,12 @@ async def test_reconnect_gets_history(session_id: str) -> bool:
 
 
 async def main():
-    session_id = setup_test_session_with_history()
+    session_id, token = setup_test_session_with_history()
 
     results = []
-    results.append(await test_history_replay(session_id))
-    results.append(await test_live_broadcast(session_id))
-    results.append(await test_reconnect_gets_history(session_id))
+    results.append(await test_history_replay(session_id, token))
+    results.append(await test_live_broadcast(session_id, token))
+    results.append(await test_reconnect_gets_history(session_id, token))
 
     print(f"\n{'='*55}")
     passed = sum(results)

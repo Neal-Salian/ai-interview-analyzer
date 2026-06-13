@@ -6,7 +6,7 @@ active_connections: dict[str, WebSocket] = {}
 
 
 async def connect_recruiter(session_id: str, websocket: WebSocket):
-    await websocket.accept()
+    # Note: websocket.accept() is now called in the endpoint (main.py) before validation
     active_connections[session_id] = websocket
     print(f"[WS] Recruiter connected to session {session_id} "
           f"(total active: {len(active_connections)})")
