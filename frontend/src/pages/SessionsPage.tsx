@@ -215,12 +215,13 @@ export default function SessionsPage() {
                                 )}
 
                                 {/* Action Buttons */}
-                                <div style={{ marginTop: 'auto', paddingTop: '1.25rem', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    {session.status === 'active' ? (
+                                <div style={{ marginTop: 'auto', paddingTop: '1.25rem', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                                    {session.status === 'active' && (
+                                        <>
                                         <button
                                             onClick={() => navigate(`/sessions/${session.session_id}/live`)}
                                             style={{
-                                                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+                                                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
                                                 backgroundColor: 'var(--accent)', backgroundImage: 'var(--accent-gradient)', boxShadow: 'var(--accent-glow)', color: '#fff', border: 'none', padding: '0.75rem',
                                                 borderRadius: '6px', fontWeight: 500, cursor: 'pointer', fontSize: '13px'
                                             }}
@@ -228,7 +229,41 @@ export default function SessionsPage() {
                                             <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>login</span>
                                             Join Session
                                         </button>
-                                    ) : (
+                                        <button
+                                            onClick={async () => {
+                                                await client.patch(`/sessions/${session.session_id}/end`)
+                                                const res = await client.get('/sessions/today')
+                                                setSessions(res.data)
+                                            }}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+                                                backgroundColor: 'transparent', border: '1px solid var(--danger)', color: 'var(--danger)', padding: '0.75rem',
+                                                borderRadius: '6px', fontWeight: 500, cursor: 'pointer', fontSize: '13px'
+                                            }}
+                                            title="End Session"
+                                        >
+                                            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>stop_circle</span>
+                                        </button>
+                                        </>
+                                    )}
+                                    {session.status === 'scheduled' && (
+                                        <button
+                                            onClick={async () => {
+                                                await client.patch(`/sessions/${session.session_id}/start`)
+                                                const res = await client.get('/sessions/today')
+                                                setSessions(res.data)
+                                            }}
+                                            style={{
+                                                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+                                                backgroundColor: 'var(--bg-surface-high)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '0.75rem',
+                                                borderRadius: '6px', fontWeight: 500, cursor: 'pointer', fontSize: '13px'
+                                            }}
+                                        >
+                                            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>play_circle</span>
+                                            Start Session
+                                        </button>
+                                    )}
+                                    {session.status === 'completed' && (
                                         <>
                                             <div style={{ display: 'flex', gap: '6px' }}>
                                                 {session.tags?.map((tag, idx) => (
