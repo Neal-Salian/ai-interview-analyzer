@@ -1,10 +1,10 @@
 from sqlalchemy import Column, String, Float, DateTime, ForeignKey, Text, Boolean, JSON
 from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from .database import Base
 import uuid
 import datetime
-from sqlalchemy.dialects.postgresql import JSONB
+
 
 class Candidate(Base):
     __tablename__ = "candidates"
@@ -13,6 +13,7 @@ class Candidate(Base):
     email = Column(String, unique=True, nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     sessions = relationship("Session", back_populates="candidate")
+
 
 class Job(Base):
     __tablename__ = "jobs"
@@ -24,13 +25,25 @@ class Job(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     sessions = relationship("Session", back_populates="job")
 
+
+class Recruiter(Base):
+    __tablename__ = "recruiters"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email = Column(String, unique=True, nullable=False, index=True)
+    hashed_password = Column(String, nullable=False)
+    full_name = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    reset_token = Column(String, nullable=True)
+    reset_token_expiry = Column(DateTime, nullable=True)
+    sessions = relationship("Session", back_populates="recruiter")
+
+
 class Session(Base):
     __tablename__ = "sessions"
-
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     candidate_id = Column(UUID(as_uuid=True), ForeignKey("candidates.id"), nullable=True)
     job_id = Column(UUID(as_uuid=True), ForeignKey("jobs.id"), nullable=True)
-    recruiter_id = Column(UUID(as_uuid=True), ForeignKey("recruiters.id", ondelete="SET NULL"), nullable=True) 
+    recruiter_id = Column(UUID(as_uuid=True), ForeignKey("recruiters.id", ondelete="SET NULL"), nullable=True)
     zoom_meeting_id = Column(String, nullable=True, index=True)
     status = Column(String, default="active")
     started_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -40,11 +53,24 @@ class Session(Base):
 
     candidate = relationship("Candidate", back_populates="sessions")
     job = relationship("Job", back_populates="sessions")
-    recruiter = relationship("Recruiter", back_populates="sessions")  
+    recruiter = relationship("Recruiter", back_populates="sessions")
+    panel_members = relationship("PanelMember", back_populates="session", cascade="all, delete-orphan")
     emotion_frames = relationship("EmotionFrame", back_populates="session")
     transcript_chunks = relationship("TranscriptChunk", back_populates="session")
     suggested_questions = relationship("SuggestedQuestion", back_populates="session")
-    panel_members = relationship("PanelMember", back_populates="session", cascade="all, delete-orphan")
+
+
+class PanelMember(Base):
+    __tablename__ = "panel_members"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    email = Column(String, nullable=False)
+    role = Column(String, nullable=True)
+    notify_invite = Column(Boolean, default=True)
+    notify_report = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    session = relationship("Session", back_populates="panel_members")
 
 
 class EmotionFrame(Base):
@@ -54,7 +80,7 @@ class EmotionFrame(Base):
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
     dominant_emotion = Column(String)
     confidence = Column(Float)
-    session = relationship("Session", back_populates="emotion_frames")  
+    session = relationship("Session", back_populates="emotion_frames")
 
 
 class TranscriptChunk(Base):
@@ -63,7 +89,7 @@ class TranscriptChunk(Base):
     session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"))
     text = Column(Text)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
-    session = relationship("Session", back_populates="transcript_chunks")  
+    session = relationship("Session", back_populates="transcript_chunks")
 
 
 class SuggestedQuestion(Base):
@@ -74,54 +100,27 @@ class SuggestedQuestion(Base):
     triggered_by = Column(Text)
     was_asked = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    session = relationship("Session", back_populates="suggested_questions")  
+    session = relationship("Session", back_populates="suggested_questions")
 
-
-class Recruiter(Base):
-    __tablename__ = "recruiters"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email = Column(String, unique=True, nullable=False, index=True)
-    hashed_password = Column(String, nullable=False)
-    full_name = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    sessions = relationship("Session", back_populates="recruiter")
-
-class PanelMember(Base):
-    __tablename__ = "panel_members"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False, index=True)
-    name = Column(String, nullable=False)
-    email = Column(String, nullable=False)
-    role = Column(String, nullable=True)          # "Technical Lead", "HR Manager" etc
-    notify_invite = Column(Boolean, default=True) # send interview invite
-    notify_report = Column(Boolean, default=True) # send report when ready
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
-
-    session = relationship("Session", back_populates="panel_members")
-
-# ── Phase 2: Attention tracking ──────────────────────────────────────────────
 
 class AttentionEvent(Base):
     __tablename__ = "attention_events"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"), index=True)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
-    direction = Column(String)       # center, left, right, up, down, missing
+    direction = Column(String)
     confidence = Column(Float)
     yaw = Column(Float, nullable=True)
     pitch = Column(Float, nullable=True)
     session = relationship("Session", backref="attention_events")
 
 
-# ── Phase 3: Integrity events ────────────────────────────────────────────────
-
 class IntegrityEvent(Base):
     __tablename__ = "integrity_events"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"), index=True)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
-    event_type = Column(String)      # multi_face, liveness_fail, voice_anomaly
-    severity = Column(String)        # info, warning, critical
+    event_type = Column(String)
+    severity = Column(String)
     details = Column(JSONB, nullable=True)
     session = relationship("Session", backref="integrity_events")
