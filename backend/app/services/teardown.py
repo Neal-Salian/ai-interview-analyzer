@@ -66,3 +66,32 @@ async def teardown_session(session_id: str, db: DBSession) -> None:
         logger.exception(
             f"[teardown] metrics computation failed for session {session_id}: {e}"
         )
+    # Notify recruiter and panel that report is ready
+    from app.services.email import send_report_ready
+    from app.db.models import PanelMember
+
+    candidate_name = session.candidate.name if session.candidate else "Candidate"
+    job_title = session.job.title if session.job else None
+
+    # Recruiter
+    if session.recruiter and session.recruiter.email:
+        await send_report_ready(
+            to_email=session.recruiter.email,
+            recipient_name=session.recruiter.full_name or "Recruiter",
+            candidate_name=candidate_name,
+            job_title=job_title,
+            session_id=str(session.id),
+        )
+
+    # Panel members
+    for member in db.query(PanelMember).filter(
+        PanelMember.session_id == session.id,
+        PanelMember.notify_report == True,
+    ).all():
+        await send_report_ready(
+            to_email=member.email,
+            recipient_name=member.name,
+            candidate_name=candidate_name,
+            job_title=job_title,
+            session_id=str(session.id),
+        )
