@@ -30,6 +30,7 @@ class Session(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     candidate_id = Column(UUID(as_uuid=True), ForeignKey("candidates.id"), nullable=True)
     job_id = Column(UUID(as_uuid=True), ForeignKey("jobs.id"), nullable=True)
+    recruiter_id = Column(UUID(as_uuid=True), ForeignKey("recruiters.id", ondelete="SET NULL"), nullable=True) 
     zoom_meeting_id = Column(String, nullable=True, index=True)
     status = Column(String, default="active")
     started_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -39,6 +40,7 @@ class Session(Base):
 
     candidate = relationship("Candidate", back_populates="sessions")
     job = relationship("Job", back_populates="sessions")
+    recruiter = relationship("Recruiter", back_populates="sessions")  
     emotion_frames = relationship("EmotionFrame", back_populates="session")
     transcript_chunks = relationship("TranscriptChunk", back_populates="session")
     suggested_questions = relationship("SuggestedQuestion", back_populates="session")
@@ -81,6 +83,7 @@ class Recruiter(Base):
     hashed_password = Column(String, nullable=False)
     full_name = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    sessions = relationship("Session", back_populates="recruiter")
 
 
 # ── Phase 2: Attention tracking ──────────────────────────────────────────────
