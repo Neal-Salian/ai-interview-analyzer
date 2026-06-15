@@ -2,13 +2,13 @@ import hmac
 import hashlib
 import asyncio
 import uuid
+import json
 import datetime
 import logging
+import time
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-from typing import Any, Dict
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -22,23 +22,63 @@ from app.services.teardown import teardown_session
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-
-class ZoomPayload(BaseModel):
-    plainToken: str | None = None
-    object: Dict[str, Any] | None = None
+TIMESTAMP_TOLERANCE_SECONDS = 300  # 5 minutes
 
 
-class ZoomWebhookRequest(BaseModel):
-    event: str
-    event_ts: int
-    payload: ZoomPayload
+# ── Signature helpers ──────────────────────────────────────────────────────────
+
+def _sign_token(plain_token: str) -> str:
+    """Used only for Zoom's URL validation handshake."""
+    return hmac.new(
+        settings.ZOOM_WEBHOOK_SECRET.encode("utf-8"),
+        plain_token.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
 
 
-def verify_zoom_signature(plain_token: str) -> str:
-    msg = plain_token.encode("utf-8")
-    secret = settings.ZOOM_WEBHOOK_SECRET.encode("utf-8")
-    return hmac.new(secret, msg, hashlib.sha256).hexdigest()
+def _verify_request_signature(
+    raw_body: bytes,
+    zoom_signature: str,
+    zoom_timestamp: str,
+) -> bool:
+    """
+    Verifies every incoming webhook POST using HMAC-SHA256.
+    Zoom signs: f"v0:{timestamp}:{raw_body}" with the webhook secret.
+    Header format: x-zm-signature: v0=<hex_digest>
+    Also rejects requests older than 5 minutes (replay attack prevention).
+    """
+    if not zoom_signature or not zoom_timestamp:
+        logger.warning("[webhook] Missing signature or timestamp headers")
+        return False
 
+    # Reject stale requests
+    try:
+        age = abs(time.time() - int(zoom_timestamp))
+    except (ValueError, TypeError):
+        logger.warning("[webhook] Invalid x-zm-request-timestamp value")
+        return False
+
+    if age > TIMESTAMP_TOLERANCE_SECONDS:
+        logger.warning(f"[webhook] Rejected stale request (age={age:.0f}s)")
+        return False
+
+    # Recompute expected signature
+    message = f"v0:{zoom_timestamp}:{raw_body.decode('utf-8')}"
+    expected = "v0=" + hmac.new(
+        settings.ZOOM_WEBHOOK_SECRET.encode("utf-8"),
+        message.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+    # Constant-time comparison prevents timing attacks
+    if not hmac.compare_digest(expected, zoom_signature):
+        logger.warning("[webhook] Signature mismatch — possible spoofed request")
+        return False
+
+    return True
+
+
+# ── Consumer retry wrapper ─────────────────────────────────────────────────────
 
 async def run_consumer_with_retry(session_id: str, rtmp_url: str):
     """
@@ -57,7 +97,6 @@ async def run_consumer_with_retry(session_id: str, rtmp_url: str):
             logger.info(f"[consumer] stream ended cleanly for session {session_id}")
             break
         except asyncio.CancelledError:
-            # Teardown cancelled this task intentionally — exit cleanly
             logger.info(f"[consumer] cancelled for session {session_id}")
             raise
         except Exception as e:
@@ -72,31 +111,53 @@ async def run_consumer_with_retry(session_id: str, rtmp_url: str):
                 )
 
 
+# ── Webhook endpoint ───────────────────────────────────────────────────────────
+
 @router.post("/zoom")
 async def zoom_webhook(
-    request: ZoomWebhookRequest,
-    db: Session = Depends(get_db)
+    request: Request,
+    db: Session = Depends(get_db),
 ):
-    # ── Endpoint URL validation handshake ─────────────────────────────────────
-    if request.event == "endpoint.url_validation":
-        if not request.payload.plainToken:
+    # Read raw body first — required for HMAC and manual JSON parse
+    raw_body = await request.body()
+
+    # Parse payload
+    try:
+        payload = json.loads(raw_body)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    event = payload.get("event", "")
+
+    # ── URL validation handshake (no signature required by Zoom) ──────────────
+    if event == "endpoint.url_validation":
+        plain_token = payload.get("payload", {}).get("plainToken", "")
+        if not plain_token:
             raise HTTPException(status_code=400, detail="Missing plainToken")
-        encrypted_token = verify_zoom_signature(request.payload.plainToken)
         return JSONResponse(status_code=200, content={
-            "plainToken": request.payload.plainToken,
-            "encryptedToken": encrypted_token
+            "plainToken": plain_token,
+            "encryptedToken": _sign_token(plain_token),
         })
 
+    # ── Verify signature on all other events ──────────────────────────────────
+    if not _verify_request_signature(
+        raw_body=raw_body,
+        zoom_signature=request.headers.get("x-zm-signature", ""),
+        zoom_timestamp=request.headers.get("x-zm-request-timestamp", ""),
+    ):
+        raise HTTPException(status_code=401, detail="Invalid Zoom signature")
+
+    event_payload = payload.get("payload", {})
+    meeting_data = event_payload.get("object", {})
+
     # ── meeting.started ───────────────────────────────────────────────────────
-    if request.event == "meeting.started":
-        meeting_data = request.payload.object or {}
+    if event == "meeting.started":
         meeting_id = str(meeting_data.get("id", ""))
         topic = meeting_data.get("topic", "Unknown")
         host_email = meeting_data.get(
             "host_email", f"host_{meeting_id}@unknown.com"
         )
 
-        # Deduplicate: if consumer is already running, ignore the duplicate webhook
         existing = get_session_by_meeting_id(meeting_id)
         if existing and is_active(str(existing.id)):
             logger.warning(
@@ -104,7 +165,6 @@ async def zoom_webhook(
             )
             return JSONResponse(status_code=200, content={"message": "Already active"})
 
-        # Create candidate if not seen before
         candidate = db.query(Candidate).filter(
             Candidate.email == host_email
         ).first()
@@ -113,7 +173,7 @@ async def zoom_webhook(
                 id=uuid.uuid4(),
                 name=topic,
                 email=host_email,
-                created_at=datetime.datetime.utcnow()
+                created_at=datetime.datetime.utcnow(),
             )
             db.add(candidate)
             db.flush()
@@ -123,7 +183,7 @@ async def zoom_webhook(
             candidate_id=candidate.id,
             zoom_meeting_id=meeting_id,
             status="active",
-            started_at=datetime.datetime.utcnow()
+            started_at=datetime.datetime.utcnow(),
         )
         db.add(session)
         db.commit()
@@ -131,8 +191,6 @@ async def zoom_webhook(
         session_id = str(session.id)
         rtmp_url = f"rtmp://localhost:1935/stream/{meeting_id}"
 
-        # Launch consumer and immediately register it in the task registry
-        # so teardown_session() can cancel it by session_id
         consumer_task = asyncio.create_task(
             run_consumer_with_retry(session_id, rtmp_url)
         )
@@ -144,28 +202,24 @@ async def zoom_webhook(
         )
         return JSONResponse(status_code=200, content={
             "message": "Session started",
-            "session_id": session_id
+            "session_id": session_id,
         })
 
     # ── meeting.ended ─────────────────────────────────────────────────────────
-    if request.event == "meeting.ended":
-        meeting_data = request.payload.object or {}
+    if event == "meeting.ended":
         meeting_id = str(meeting_data.get("id", ""))
-
         logger.info(f"[webhook] meeting.ended received for meeting {meeting_id}")
 
         session = get_session_by_meeting_id(meeting_id)
         if not session:
             logger.warning(
-                f"[webhook] meeting.ended — no session found "
-                f"for meeting {meeting_id}, ignoring"
+                f"[webhook] meeting.ended — no session found for {meeting_id}"
             )
             return JSONResponse(status_code=200, content={"message": "Session not found"})
 
         if session.status == "completed":
             logger.warning(
-                f"[webhook] meeting.ended — session {session.id} "
-                f"already completed, ignoring duplicate"
+                f"[webhook] meeting.ended — session {session.id} already completed"
             )
             return JSONResponse(status_code=200, content={"message": "Already completed"})
 
@@ -174,9 +228,9 @@ async def zoom_webhook(
         logger.info(f"[webhook] session {session.id} torn down successfully")
         return JSONResponse(status_code=200, content={
             "message": "Session torn down",
-            "session_id": str(session.id)
+            "session_id": str(session.id),
         })
 
     # ── All other events ──────────────────────────────────────────────────────
-    logger.debug(f"[webhook] unhandled event: {request.event}")
+    logger.debug(f"[webhook] unhandled event: {event}")
     return JSONResponse(status_code=200, content={"message": "Event ignored"})
