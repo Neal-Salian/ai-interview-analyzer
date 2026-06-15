@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.registry import register_session, is_active
 from app.db.database import get_db
-from app.db.models import Candidate, Session as InterviewSession
+from app.db.models import Candidate, Session as InterviewSession, Recruiter
 from app.db.crud import get_session_by_meeting_id
 from app.ml.stream.rtmp_consumer import consume_stream
 from app.services.teardown import teardown_session
@@ -178,9 +178,12 @@ async def zoom_webhook(
             db.add(candidate)
             db.flush()
 
+        recruiter = db.query(Recruiter).filter(Recruiter.email == host_email).first()
+
         session = InterviewSession(
             id=uuid.uuid4(),
             candidate_id=candidate.id,
+            recruiter_id=recruiter.id if recruiter else None,
             zoom_meeting_id=meeting_id,
             status="active",
             started_at=datetime.datetime.utcnow(),
