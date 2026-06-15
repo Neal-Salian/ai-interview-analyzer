@@ -63,7 +63,6 @@ async def teardown_session(session_id: str, db: DBSession) -> None:
             f"{len(metrics_result.get('metrics', []))} metric(s)"
         )
     except Exception as e:
-        logger.warning(
-            f"[teardown] metrics computation failed for session {session_id}: {e}",
-            exc_info=True,
+        logger.exception(
+            f"[teardown] metrics computation failed for session {session_id}: {e}"
         )

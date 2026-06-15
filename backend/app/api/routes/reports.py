@@ -46,7 +46,7 @@ def download_report_pdf(
     try:
         pdf_bytes = build_pdf(report)
     except Exception as e:
-        logger.error(f"[REPORT] PDF generation failed: {e}")
+        logger.exception(f"[REPORT] PDF generation failed: {e}")
         raise HTTPException(status_code=500, detail="PDF generation failed")
 
     candidate = report.get("executive_summary", {}).get("candidate", "candidate")

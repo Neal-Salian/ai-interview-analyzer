@@ -49,10 +49,10 @@ Respond with ONLY a JSON object. No explanation. No markdown. No backticks. Just
         logger.warning("[ollama] request timed out")
         return {}
     except httpx.ConnectError:
-        logger.error("[ollama] cannot connect — is Ollama running on port 11434?")
+        logger.exception("[ollama] cannot connect — is Ollama running on port 11434?")
         return {}
     except Exception as e:
-        logger.error(f"[ollama] request failed: {e}")
+        logger.exception(f"[ollama] request failed: {e}")
         return {}
 
     # --- Parse the outer Ollama envelope ---

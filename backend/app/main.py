@@ -1,5 +1,8 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
+
+logger = logging.getLogger(__name__)
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -17,20 +20,20 @@ async def lifespan(app: FastAPI):
         for session in active:
             if session.zoom_meeting_id:
                 rtmp_url = f"rtmp://localhost:1935/stream/{session.zoom_meeting_id}"
-                print(f"[STARTUP] Recovering consumer for session {session.id}")
+                logger.info(f"[STARTUP] Recovering consumer for session {session.id}")
                 asyncio.create_task(consume_stream(str(session.id), rtmp_url))
-        print(f"[STARTUP] Recovery check done — {len(active)} active session(s) found")
+        logger.info(f"[STARTUP] Recovery check done — {len(active)} active session(s) found")
     except Exception as e:
         # DB might not be ready yet — log and continue, don't crash the server
-        print(f"[STARTUP] Could not check active sessions (DB unavailable?): {e}")
+        logger.exception(f"[STARTUP] Could not check active sessions (DB unavailable?): {e}")
 
     # Discover and register all metric plugins (Phase 10)
     try:
         from app.ml.analysis.registry import discover_metrics
         discover_metrics()
-        print("[STARTUP] Metric plugins discovered")
+        logger.info("[STARTUP] Metric plugins discovered")
     except Exception as e:
-        print(f"[STARTUP] Metric discovery failed (non-fatal): {e}")
+        logger.exception(f"[STARTUP] Metric discovery failed (non-fatal): {e}")
 
     yield
 
@@ -91,10 +94,10 @@ async def websocket_endpoint(
                     "transcripts": history["transcripts"],
                     "questions": questions_history
                 })
-                print(f"[WS] Replayed {len(history['emotions'])} emotions, "
-                      f"{len(history['transcripts'])} transcripts to session {session_id}")
+                logger.info(f"[WS] Replayed {len(history['emotions'])} emotions, "
+                            f"{len(history['transcripts'])} transcripts to session {session_id}")
         except Exception as e:
-            print(f"[WS] History fetch failed for {session_id}: {e}")
+            logger.exception(f"[WS] History fetch failed for {session_id}: {e}")
             # Don't close — keep connection open for live updates
 
         while True:
@@ -106,7 +109,7 @@ async def websocket_endpoint(
     except WebSocketDisconnect:
         disconnect_recruiter(session_id)
     except Exception as e:
-        print(f"[WS] Unexpected error for {session_id}: {e}")
+        logger.exception(f"[WS] Unexpected error for {session_id}: {e}")
         disconnect_recruiter(session_id)
 
 

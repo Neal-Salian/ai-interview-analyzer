@@ -29,7 +29,7 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
             av.open, rtmp_url, options={"rtmp_live": "live"}
         )
     except Exception as e:
-        logger.error(f"[CONSUMER] Failed to open stream: {e}")
+        logger.exception(f"[CONSUMER] Failed to open stream: {e}")
         return
 
     last_analyzed = 0
