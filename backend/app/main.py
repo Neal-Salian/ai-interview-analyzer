@@ -4,7 +4,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPExcept
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from app.db.database import get_db
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, verify_development_env
 from app.api.routes import zoom_webhook, jobs, sessions, questions, auth, candidates, analysis, reports
 from app.api.websocket import connect_recruiter, disconnect_recruiter
 from app.db.crud import get_active_sessions, get_session_history, get_questions_for_session
@@ -113,7 +113,10 @@ async def websocket_endpoint(
 
 # Internal test endpoint — broadcasts a fake emotion to a session
 # Only used for testing WebSocket broadcast, remove before production
-@app.post("/internal/test-broadcast/{session_id}")
+@app.post(
+    "/internal/test-broadcast/{session_id}",
+    dependencies=[Depends(verify_development_env)]
+)
 async def test_broadcast(session_id: str):
     from app.api.websocket import broadcast
     await broadcast(session_id, {
