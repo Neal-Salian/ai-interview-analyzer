@@ -44,6 +44,7 @@ class Session(Base):
     emotion_frames = relationship("EmotionFrame", back_populates="session")
     transcript_chunks = relationship("TranscriptChunk", back_populates="session")
     suggested_questions = relationship("SuggestedQuestion", back_populates="session")
+    panel_members = relationship("PanelMember", back_populates="session", cascade="all, delete-orphan")
 
 
 class EmotionFrame(Base):
@@ -85,6 +86,19 @@ class Recruiter(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     sessions = relationship("Session", back_populates="recruiter")
 
+class PanelMember(Base):
+    __tablename__ = "panel_members"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    email = Column(String, nullable=False)
+    role = Column(String, nullable=True)          # "Technical Lead", "HR Manager" etc
+    notify_invite = Column(Boolean, default=True) # send interview invite
+    notify_report = Column(Boolean, default=True) # send report when ready
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    session = relationship("Session", back_populates="panel_members")
 
 # ── Phase 2: Attention tracking ──────────────────────────────────────────────
 
