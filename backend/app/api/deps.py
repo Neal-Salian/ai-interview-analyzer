@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.db.models import Recruiter
 from app.core.security import decode_access_token
+from app.db.models import Session as InterviewSession
+
 
 logger = logging.getLogger(__name__)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
@@ -33,4 +35,28 @@ def get_current_user(
         raise credentials_exception
 
     return recruiter
+
+
+def get_owned_session(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: Recruiter = Depends(get_current_user),
+) -> InterviewSession:
+    """
+    Fetch a session and verify the current recruiter owns it.
+    Returns 404 for missing sessions (don't leak existence to other recruiters).
+    """
+    session = db.query(InterviewSession).filter(
+        InterviewSession.id == session_id
+    ).first()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # If recruiter_id is set, enforce ownership
+    # If null (e.g. webhook-created sessions), allow any authenticated recruiter
+    if session.recruiter_id and session.recruiter_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Session not found")  # 404 not 403 — don't leak existence
+
+    return session
     
