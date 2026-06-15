@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     EMAIL_FROM_NAME: str = "AI Interview Platform"
     EMAIL_FROM: str = "" 
 
+    FRONTEND_URL: str = "http://localhost:5173"
+
     class Config:
         env_file = ".env"
 
