@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.api.deps import get_current_user, verify_development_env
-from app.api.routes import zoom_webhook, jobs, sessions, questions, auth, candidates, analysis, reports
+from app.api.routes import zoom_webhook, jobs, sessions, questions, auth, candidates, analysis, reports, panel
 from app.api.websocket import connect_recruiter, disconnect_recruiter
 from app.db.crud import get_active_sessions, get_session_history, get_questions_for_session
 from app.ml.stream.rtmp_consumer import consume_stream
@@ -55,6 +55,7 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(candidates.router, prefix="/api")
 app.include_router(analysis.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
+app.include_router(panel.router, prefix="/api")
 
 
 @app.get("/health")
