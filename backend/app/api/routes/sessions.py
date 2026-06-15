@@ -7,13 +7,9 @@ from pydantic import BaseModel
 from typing import Optional
 
 from app.db.database import get_db
-from app.db.crud import get_todays_sessions
 from app.db.models import Session as InterviewSession, Candidate, Job
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_owned_session
 from app.services.teardown import teardown_session
-from app.api.routes.zoom_webhook import run_consumer_with_retry
-from app.core.registry import register_session, is_active
-import asyncio
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -26,15 +22,25 @@ class SessionCreate(BaseModel):
 
 
 @router.get("/sessions/today")
-def todays_sessions(current_user=Depends(get_current_user)):
-    sessions = get_todays_sessions()
+def todays_sessions(
+    db: DBSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    sessions = db.query(InterviewSession).filter(
+        InterviewSession.started_at >= datetime.datetime.utcnow().replace(
+            hour=0, minute=0, second=0, microsecond=0
+        ),
+        # Show sessions owned by this recruiter OR unowned (webhook-created)
+        (InterviewSession.recruiter_id == current_user.id) |
+        (InterviewSession.recruiter_id == None)  # noqa: E711
+    ).all()
     return [
         {
             "session_id": str(s.id),
             "candidate": s.candidate.name if s.candidate else None,
             "job": s.job.title if s.job else None,
             "scheduled_at": s.scheduled_at,
-            "status": s.status
+            "status": s.status,
         }
         for s in sessions
     ]
@@ -44,7 +50,7 @@ def todays_sessions(current_user=Depends(get_current_user)):
 def create_session(
     payload: SessionCreate,
     db: DBSession = Depends(get_db),
-    current_user=Depends(get_current_user)
+    current_user=Depends(get_current_user),
 ):
     candidate = db.query(Candidate).filter(
         Candidate.id == payload.candidate_id
@@ -66,8 +72,10 @@ def create_session(
         id=uuid.uuid4(),
         candidate_id=candidate.id,
         job_id=job.id if job else None,
+        recruiter_id=current_user.id,  # stamp ownership at creation
         status="scheduled",
         scheduled_at=scheduled_at or datetime.datetime.utcnow(),
+        started_at=datetime.datetime.utcnow(),
     )
     db.add(session)
     db.commit()
@@ -79,22 +87,14 @@ def create_session(
         "candidate": candidate.name,
         "job": job.title if job else None,
         "status": session.status,
-        "scheduled_at": session.scheduled_at.isoformat()
+        "scheduled_at": session.scheduled_at.isoformat(),
     }
 
 
 @router.get("/sessions/{session_id}")
 def get_session(
-    session_id: str,
-    db: DBSession = Depends(get_db),
-    current_user=Depends(get_current_user)
+    session: InterviewSession = Depends(get_owned_session),
 ):
-    session = db.query(InterviewSession).filter(
-        InterviewSession.id == session_id
-    ).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
     return {
         "session_id": str(session.id),
         "candidate": session.candidate.name if session.candidate else None,
@@ -102,53 +102,20 @@ def get_session(
         "status": session.status,
         "scheduled_at": session.scheduled_at,
         "started_at": session.started_at,
-        "ended_at": session.ended_at
+        "ended_at": session.ended_at,
     }
-
-
-@router.patch("/sessions/{session_id}/start")
-async def start_session(
-    session_id: str,
-    db: DBSession = Depends(get_db),
-    current_user=Depends(get_current_user)
-):
-    session = db.query(InterviewSession).filter(
-        InterviewSession.id == session_id
-    ).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-    if session.status != "scheduled":
-        raise HTTPException(status_code=400, detail="Only scheduled sessions can be started")
-
-    session.status = "active"
-    session.started_at = datetime.datetime.utcnow()
-    db.commit()
-
-    if not is_active(session_id):
-        rtmp_url = f"rtmp://localhost:1935/stream/{session_id}"
-        consumer_task = asyncio.create_task(run_consumer_with_retry(session_id, rtmp_url))
-        register_session(session_id, consumer_task)
-        logger.info(f"[sessions] spawned consumer for session {session_id}")
-
-    logger.info(f"[sessions] started session {session_id}")
-    return {"session_id": session_id, "status": "active"}
 
 
 @router.patch("/sessions/{session_id}/end")
 async def end_session(
-    session_id: str,
     db: DBSession = Depends(get_db),
-    current_user=Depends(get_current_user)
+    current_user=Depends(get_current_user),
+    session: InterviewSession = Depends(get_owned_session),
 ):
-    session = db.query(InterviewSession).filter(
-        InterviewSession.id == session_id
-    ).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
     if session.status == "completed":
         raise HTTPException(status_code=400, detail="Session already completed")
 
-    await teardown_session(session_id, db)
+    await teardown_session(session_id=str(session.id), db=db)
 
-    logger.info(f"[sessions] ended session {session_id}")
-    return {"session_id": session_id, "status": "completed"}
+    logger.info(f"[sessions] manually ended session {session.id}")
+    return {"session_id": str(session.id), "status": "completed"}
