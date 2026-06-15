@@ -11,6 +11,13 @@ class Settings(BaseSettings):
     ZOOM_CLIENT_SECRET: str = ""
     ZOOM_WEBHOOK_SECRET: str = ""
 
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""           # Gmail: use an App Password, not your real password
+    EMAIL_FROM_NAME: str = "AI Interview Platform"
+    EMAIL_FROM: str = "" 
+
     class Config:
         env_file = ".env"
 
