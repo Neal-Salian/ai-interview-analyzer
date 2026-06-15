@@ -7,6 +7,12 @@ import LiveDashboard from './pages/LiveDashboard'
 import ReportPage from './pages/ReportPage'
 import CandidatePage from './pages/CandidatePage'
 import { ThemeProvider } from './context/ThemeContext';
+import RegisterPage from './pages/RegisterPage'
+import ForgotPasswordPage from './pages/ForgotPasswordPage'
+import ResetPasswordPage from './pages/ResetPasswordPage'
+
+// Inside <Routes> after /login:
+
 
 export default function App() {
   return (
@@ -16,7 +22,9 @@ export default function App() {
           <Routes>
             {/* Public */}
             <Route path="/login" element={<LoginPage />} />
-
+            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
             {/* Protected */}
             <Route path="/sessions" element={
               <ProtectedRoute><SessionsPage /></ProtectedRoute>
