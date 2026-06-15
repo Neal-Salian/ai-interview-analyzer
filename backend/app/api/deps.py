@@ -16,7 +16,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 def get_current_user(
     token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ) -> Recruiter:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -26,17 +26,13 @@ def get_current_user(
     payload = decode_access_token(token)
     if not payload:
         raise credentials_exception
-
     email: str = payload.get("sub")
     if not email:
         raise credentials_exception
-
     recruiter = db.query(Recruiter).filter(Recruiter.email == email).first()
     if not recruiter:
         raise credentials_exception
-
     return recruiter
-
 
 def get_owned_session(
     session_id: str,
@@ -44,20 +40,17 @@ def get_owned_session(
     current_user: Recruiter = Depends(get_current_user),
 ) -> InterviewSession:
     """
-    Fetch a session and verify the current recruiter owns it.
-    Returns 404 for missing sessions (don't leak existence to other recruiters).
+    Fetch a session and verify ownership.
+    Returns 404 for missing or unauthorised (don't leak existence).
+    Webhook-created sessions (recruiter_id=None) are visible to all authenticated recruiters.
     """
     session = db.query(InterviewSession).filter(
         InterviewSession.id == session_id
     ).first()
-
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-
-    # Enforce ownership strictly. Unowned sessions are inaccessible.
-    if session.recruiter_id != current_user.id:
-        raise HTTPException(status_code=404, detail="Session not found")  # 404 not 403 — don't leak existence
-
+    if session.recruiter_id and session.recruiter_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Session not found")
     return session
 
 
