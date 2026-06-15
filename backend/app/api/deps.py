@@ -53,9 +53,8 @@ def get_owned_session(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # If recruiter_id is set, enforce ownership
-    # If null (e.g. webhook-created sessions), allow any authenticated recruiter
-    if session.recruiter_id and session.recruiter_id != current_user.id:
+    # Enforce ownership strictly. Unowned sessions are inaccessible.
+    if session.recruiter_id != current_user.id:
         raise HTTPException(status_code=404, detail="Session not found")  # 404 not 403 — don't leak existence
 
     return session
