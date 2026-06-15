@@ -79,6 +79,28 @@ def create_session(
     db.commit()
     db.refresh(session)
 
+    # Fire-and-forget notification emails
+    import asyncio
+    from app.services.email import send_candidate_invite, send_recruiter_session_confirmation
+
+    scheduled_str = session.scheduled_at.strftime("%A %d %B %Y, %H:%M") if session.scheduled_at else "TBD"
+
+    asyncio.create_task(send_candidate_invite(
+        to_email=candidate.email,
+        candidate_name=candidate.name,
+        job_title=job.title if job else None,
+        scheduled_at=scheduled_str,
+    ))
+
+    asyncio.create_task(send_recruiter_session_confirmation(
+        to_email=current_user.email,
+        recruiter_name=current_user.full_name or "Recruiter",
+        candidate_name=candidate.name,
+        job_title=job.title if job else None,
+        scheduled_at=scheduled_str,
+        session_id=str(session.id),
+    ))
+
     logger.info(f"[sessions] created session {session.id} for {candidate.name}")
     return {
         "session_id": str(session.id),
@@ -87,6 +109,7 @@ def create_session(
         "status": session.status,
         "scheduled_at": session.scheduled_at.isoformat(),
     }
+    
 
 
 @router.get("/sessions/{session_id}")
