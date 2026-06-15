@@ -30,9 +30,7 @@ def todays_sessions(
         InterviewSession.started_at >= datetime.datetime.utcnow().replace(
             hour=0, minute=0, second=0, microsecond=0
         ),
-        # Show sessions owned by this recruiter OR unowned (webhook-created)
-        (InterviewSession.recruiter_id == current_user.id) |
-        (InterviewSession.recruiter_id == None)  # noqa: E711
+        InterviewSession.recruiter_id == current_user.id
     ).all()
     return [
         {
