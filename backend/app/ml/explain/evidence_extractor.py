@@ -63,13 +63,19 @@ def extract_evidence_for_metric(
     if not match:
         return None
 
+    confidence = match.get("confidence", 0.0)
+
     return {
         "metric": match,
         "evidence": match.get("evidence", []),
         "explanation": match.get("explanation", ""),
         "signals_used": match.get("signals_used", []),
         "score": match.get("score", 0),
+        "raw_score": match.get("raw_score", match.get("score", 0)),
         "level": match.get("level", "Unknown"),
+        "confidence": confidence,
+        "confidence_details": match.get("confidence_details", []),
+        "confidence_level": _classify_confidence(confidence),
     }
 
 
@@ -87,6 +93,16 @@ def get_all_metrics_summary(session_summary: dict) -> list[dict]:
             "name": m.get("name", "Unknown"),
             "score": m.get("score", 0),
             "level": m.get("level", "Unknown"),
+            "confidence": m.get("confidence", 0.0),
         }
         for m in session_summary.get("metrics", [])
     ]
+
+
+def _classify_confidence(confidence: float) -> str:
+    """Classify a confidence value as high/medium/low."""
+    if confidence >= 0.7:
+        return "high"
+    if confidence >= 0.4:
+        return "medium"
+    return "low"
