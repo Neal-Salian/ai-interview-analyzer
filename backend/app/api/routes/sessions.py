@@ -1,8 +1,9 @@
 import uuid
 import datetime
 import logging
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session as DBSession
+from sqlalchemy import or_
 from pydantic import BaseModel
 from typing import Optional
 
@@ -26,9 +27,11 @@ def todays_sessions(
     db: DBSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    today_start = datetime.datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     sessions = db.query(InterviewSession).filter(
-        InterviewSession.started_at >= datetime.datetime.utcnow().replace(
-            hour=0, minute=0, second=0, microsecond=0
+        or_(
+            InterviewSession.scheduled_at >= today_start,
+            InterviewSession.started_at >= today_start
         ),
         InterviewSession.recruiter_id == current_user.id
     ).all()
@@ -47,6 +50,7 @@ def todays_sessions(
 @router.post("/sessions")
 def create_session(
     payload: SessionCreate,
+    background_tasks: BackgroundTasks,
     db: DBSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -73,33 +77,34 @@ def create_session(
         recruiter_id=current_user.id,  # stamp ownership at creation
         status="scheduled",
         scheduled_at=scheduled_at or datetime.datetime.utcnow(),
-        started_at=datetime.datetime.utcnow(),
+        started_at=None,
     )
     db.add(session)
     db.commit()
     db.refresh(session)
 
     # Fire-and-forget notification emails
-    import asyncio
     from app.services.email import send_candidate_invite, send_recruiter_session_confirmation
 
     scheduled_str = session.scheduled_at.strftime("%A %d %B %Y, %H:%M") if session.scheduled_at else "TBD"
 
-    asyncio.create_task(send_candidate_invite(
+    background_tasks.add_task(
+        send_candidate_invite,
         to_email=candidate.email,
         candidate_name=candidate.name,
         job_title=job.title if job else None,
         scheduled_at=scheduled_str,
-    ))
+    )
 
-    asyncio.create_task(send_recruiter_session_confirmation(
+    background_tasks.add_task(
+        send_recruiter_session_confirmation,
         to_email=current_user.email,
         recruiter_name=current_user.full_name or "Recruiter",
         candidate_name=candidate.name,
         job_title=job.title if job else None,
         scheduled_at=scheduled_str,
         session_id=str(session.id),
-    ))
+    )
 
     logger.info(f"[sessions] created session {session.id} for {candidate.name}")
     return {
@@ -124,6 +129,28 @@ def get_session(
         "scheduled_at": session.scheduled_at,
         "started_at": session.started_at,
         "ended_at": session.ended_at,
+    }
+
+
+@router.patch("/sessions/{session_id}/start")
+async def start_session(
+    db: DBSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+    session: InterviewSession = Depends(get_owned_session),
+):
+    if session.status != "scheduled":
+        raise HTTPException(status_code=400, detail="Only scheduled sessions can be started")
+
+    session.status = "active"
+    session.started_at = datetime.datetime.utcnow()
+    db.commit()
+    db.refresh(session)
+
+    logger.info(f"[sessions] started session {session.id}")
+    return {
+        "session_id": str(session.id),
+        "status": session.status,
+        "started_at": session.started_at.isoformat() if session.started_at else None
     }
 
 
