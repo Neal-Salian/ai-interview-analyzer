@@ -217,7 +217,7 @@ def mark_session_completed(db: DBSession, session_id: str) -> InterviewSession |
     if not session:
         return None
 
-    session.status = "completed"
+    session.status = "processing"
     session.ended_at = datetime.datetime.utcnow()
     db.commit()
     db.refresh(session)
@@ -243,6 +243,7 @@ def write_session_summary(
         return None
 
     session.session_summary = summary
+    session.status = "completed"
     db.commit()
     db.refresh(session)
     return session
