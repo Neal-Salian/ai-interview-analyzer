@@ -31,8 +31,10 @@ export interface SuggestedQuestion {
 export interface MetricResult {
     name: string
     score: number
+    raw_score?: number
     level: string
     confidence: number
+    confidence_details?: { signal: string; score: number; confidence: number; weight_applied: number }[]
     evidence: { quote: string; timestamp: string; source: string }[]
     explanation: string
     signals_used: string[]

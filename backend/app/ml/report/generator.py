@@ -63,6 +63,8 @@ def generate_report(session_id: str, db: DBSession) -> dict:
 
     summary = session.session_summary or {}
     metrics = summary.get("metrics", [])
+    overall_confidence = summary.get("overall_confidence", 0.0)
+    data_quality = summary.get("data_quality", {})
     full_text = " ".join(t.text for t in transcripts if t.text)
 
     # Duration
@@ -147,6 +149,8 @@ def generate_report(session_id: str, db: DBSession) -> dict:
             "overall_sentiment": overall_sentiment.get("label", "N/A"),
             "metrics_computed": len(metrics),
             "integrity_alerts": len(integrity_events),
+            "overall_confidence": overall_confidence,
+            "data_quality": data_quality.get("signals_quality", "unknown"),
         },
 
         # Section 2: Interview Overview
@@ -173,6 +177,7 @@ def generate_report(session_id: str, db: DBSession) -> dict:
         "behavioral_insights": {
             "metrics": metrics,
             "total_metrics": len(metrics),
+            "overall_confidence": overall_confidence,
         },
 
         # Section 5: Attention Indicators
@@ -212,7 +217,10 @@ def generate_report(session_id: str, db: DBSession) -> dict:
                 {
                     "name": m.get("name"),
                     "score": m.get("score"),
+                    "raw_score": m.get("raw_score", m.get("score")),
                     "level": m.get("level"),
+                    "confidence": m.get("confidence", 0.0),
+                    "confidence_details": m.get("confidence_details", []),
                     "evidence": m.get("evidence", []),
                     "explanation": m.get("explanation", ""),
                 }

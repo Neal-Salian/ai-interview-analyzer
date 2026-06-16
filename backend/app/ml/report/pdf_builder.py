@@ -114,8 +114,18 @@ def build_pdf(report_data: dict) -> bytes:
         ["Overall Sentiment", exec_summary.get("overall_sentiment", "N/A")],
         ["Metrics Computed", str(exec_summary.get("metrics_computed", 0))],
         ["Integrity Alerts", str(exec_summary.get("integrity_alerts", 0))],
+        ["Overall Score Confidence", f"{round(exec_summary.get('overall_confidence', 0) * 100)}%"],
+        ["Data Quality", exec_summary.get("data_quality", "unknown").upper()],
     ]
     elements.append(_build_kv_table(summary_data))
+    elements.append(Spacer(1, 4))
+
+    # Low-confidence warning
+    if exec_summary.get("overall_confidence", 0) < 0.4:
+        elements.append(Paragraph(
+            '<font color="#f59e0b">⚠ Limited data — scores should be interpreted with caution.</font>',
+            styles["Normal"],
+        ))
     elements.append(Spacer(1, 8))
 
     # ── Section 2: Interview Overview ────────────────────────────────────
@@ -158,14 +168,24 @@ def build_pdf(report_data: dict) -> bytes:
     elements.append(Paragraph("4. Behavioral Insights", styles["SectionTitle"]))
 
     if metrics:
-        metric_data = [["Metric", "Score", "Level"]]
+        metric_data = [["Metric", "Score", "Level", "Confidence"]]
         for m in metrics:
+            conf = m.get("confidence", 0)
+            conf_pct = f"{round(conf * 100)}%"
+            # Color-code confidence
+            if conf >= 0.7:
+                conf_display = f'<font color="#10b981">{conf_pct}</font>'
+            elif conf >= 0.4:
+                conf_display = f'<font color="#f59e0b">{conf_pct}</font>'
+            else:
+                conf_display = f'<font color="#ef4444">{conf_pct}</font>'
             metric_data.append([
                 m.get("name", ""),
                 f"{m.get('score', 0)}/100",
                 m.get("level", ""),
+                Paragraph(conf_display, styles["Normal"]),
             ])
-        t = Table(metric_data, colWidths=[200, 80, 100])
+        t = Table(metric_data, colWidths=[170, 70, 90, 70])
         t.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), ACCENT),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -275,8 +295,17 @@ def build_pdf(report_data: dict) -> bytes:
     metrics_with_ev = evidence_obs.get("metrics_with_evidence", [])
     if metrics_with_ev:
         for m in metrics_with_ev:
+            conf = m.get('confidence', 0)
+            conf_pct = f"{round(conf * 100)}%"
+            if conf >= 0.7:
+                conf_label = f'<font color="#10b981">[{conf_pct} confidence]</font>'
+            elif conf >= 0.4:
+                conf_label = f'<font color="#f59e0b">[{conf_pct} confidence]</font>'
+            else:
+                conf_label = f'<font color="#ef4444">[{conf_pct} confidence]</font>'
+
             elements.append(Paragraph(
-                f"<b>{m['name']}</b> — {m['score']}/100 ({m['level']})",
+                f"<b>{m['name']}</b> — {m['score']}/100 ({m['level']}) {conf_label}",
                 styles["Normal"],
             ))
             if m.get("explanation"):
@@ -284,7 +313,7 @@ def build_pdf(report_data: dict) -> bytes:
             for ev in m.get("evidence", [])[:3]:
                 quote = ev.get("quote", "")
                 if quote:
-                    elements.append(Paragraph(f'"{quote}"', styles["Evidence"]))
+                    elements.append(Paragraph(f'"  {quote}"', styles["Evidence"]))
             elements.append(Spacer(1, 4))
     else:
         elements.append(Paragraph("No evidence-based observations available.", styles["SubInfo"]))
