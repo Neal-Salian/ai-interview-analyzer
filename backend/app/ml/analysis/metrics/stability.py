@@ -9,10 +9,20 @@ Signals:
   - Mood shift frequency (how often dominant emotion changes)
   - Recovery time after negative emotion spikes
   - Sustained positive/neutral baseline
+
+v2.0: Confidence-weighted scoring with raised sample-size thresholds,
+      EMA smoothing, outlier filtering, and per-signal confidence breakdown.
 """
 
-from app.ml.analysis.interfaces import (
-    MetricResult, SessionContext, score_to_level,
+from collections import Counter
+
+from app.ml.analysis.interfaces import MetricResult, SessionContext
+from app.ml.analysis.scoring_utils import (
+    confidence_weighted_average,
+    sample_size_confidence,
+    ema_smooth,
+    score_to_level,
+    SignalComponent,
 )
 from app.ml.analysis.registry import register_metric
 
@@ -24,43 +34,69 @@ class StabilityMetric:
         "throughout the interview, including mood shifts and recovery "
         "from negative emotion spikes."
     )
-    version = "1.0"
+    version = "2.0"
 
     NEGATIVE_EMOTIONS = {"angry", "fear", "sad", "disgust"}
     POSITIVE_EMOTIONS = {"happy", "surprise"}
 
-    def compute(self, ctx: SessionContext) -> MetricResult:
-        signals: list[str] = []
-        evidence: list[dict] = []
-        score_components: list[int] = []
+    # Minimum data thresholds — raised from v1.0
+    MIN_EMOTION_FRAMES = 10
+    IDEAL_EMOTION_FRAMES = 50
 
-        if not ctx.emotions or len(ctx.emotions) < 3:
+    def compute(self, ctx: SessionContext) -> MetricResult:
+        components: list[SignalComponent] = []
+        evidence: list[dict] = []
+
+        if not ctx.emotions or len(ctx.emotions) < self.MIN_EMOTION_FRAMES:
             return MetricResult(
                 name=self.name,
                 score=0,
+                raw_score=0,
                 level="Unavailable",
                 confidence=0.0,
+                confidence_details=[],
                 evidence=[],
-                explanation="Insufficient emotion data (need at least 3 frames).",
+                explanation=(
+                    f"Insufficient emotion data (need at least "
+                    f"{self.MIN_EMOTION_FRAMES} frames, got {len(ctx.emotions) if ctx.emotions else 0})."
+                ),
                 signals_used=[],
             )
 
         total = len(ctx.emotions)
+        base_confidence = sample_size_confidence(
+            total, self.MIN_EMOTION_FRAMES, self.IDEAL_EMOTION_FRAMES
+        )
 
         # ── Signal 1: Mood shift frequency ───────────────────────────────
+        # Apply EMA smoothing to emotion sequence to reduce noise
+        # Map emotions to numeric values for smoothing
+        emotion_map = {"neutral": 0, "happy": 1, "surprise": 1,
+                       "sad": -1, "angry": -2, "fear": -2, "disgust": -1}
+        numeric_emotions = [
+            emotion_map.get(e.get("dominant_emotion", "neutral"), 0)
+            for e in ctx.emotions
+        ]
+        smoothed = ema_smooth(numeric_emotions, alpha=0.3)
+
+        # Count shifts on smoothed sequence (threshold crossings)
         shifts = 0
-        for i in range(1, total):
-            prev = ctx.emotions[i - 1].get("dominant_emotion")
-            curr = ctx.emotions[i].get("dominant_emotion")
-            if prev != curr:
+        for i in range(1, len(smoothed)):
+            # A shift occurs when the smoothed value crosses an integer boundary
+            prev_category = round(smoothed[i - 1])
+            curr_category = round(smoothed[i])
+            if prev_category != curr_category:
                 shifts += 1
 
-        shift_ratio = shifts / (total - 1)
+        shift_ratio = shifts / (total - 1) if total > 1 else 0
         # Lower shift ratio = more stable
-        # 0% shifts → 100, 80%+ shifts → ~0
         shift_score = int((1 - shift_ratio) * 100)
-        score_components.append(max(0, min(100, shift_score)))
-        signals.append("mood_shift_frequency")
+
+        components.append(SignalComponent(
+            score=max(0, min(100, shift_score)),
+            confidence=base_confidence,
+            signal_name="mood_shift_frequency",
+        ))
 
         if shift_ratio > 0.5:
             evidence.append({
@@ -76,12 +112,14 @@ class StabilityMetric:
         )
         neg_ratio = neg_count / total
         neg_score = int((1 - neg_ratio) * 100)
-        score_components.append(max(0, min(100, neg_score)))
-        signals.append("negative_emotion_ratio")
+
+        components.append(SignalComponent(
+            score=max(0, min(100, neg_score)),
+            confidence=base_confidence,
+            signal_name="negative_emotion_ratio",
+        ))
 
         # ── Signal 3: Recovery time ──────────────────────────────────────
-        # How quickly does the candidate return to neutral/positive
-        # after a negative spike?
         recovery_times: list[int] = []
         in_negative = False
         negative_streak = 0
@@ -100,8 +138,16 @@ class StabilityMetric:
             avg_recovery = sum(recovery_times) / len(recovery_times)
             # 1-2 frames recovery = excellent, 5+ = slow recovery
             recovery_score = int(max(0, 100 - (avg_recovery - 1) * 25))
-            score_components.append(max(0, min(100, recovery_score)))
-            signals.append("recovery_time")
+            # Recovery confidence scales with number of recovery events observed
+            recovery_confidence = min(base_confidence, sample_size_confidence(
+                len(recovery_times), 2, 8
+            ))
+
+            components.append(SignalComponent(
+                score=max(0, min(100, recovery_score)),
+                confidence=max(0.1, recovery_confidence),
+                signal_name="recovery_time",
+            ))
 
             if avg_recovery > 3:
                 evidence.append({
@@ -109,10 +155,18 @@ class StabilityMetric:
                     "timestamp": "",
                     "source": "emotion_detection",
                 })
+        else:
+            # No recovery events observed — either no negative emotions (good)
+            # or never recovered (bad, but unlikely without recovery data).
+            # Contribute a low-confidence neutral signal.
+            if neg_count == 0:
+                components.append(SignalComponent(
+                    score=85,  # no negative emotions is positive
+                    confidence=base_confidence * 0.3,
+                    signal_name="recovery_time",
+                ))
 
         # ── Signal 4: Baseline consistency ───────────────────────────────
-        # Is there a stable baseline emotion throughout?
-        from collections import Counter
         emotion_counts = Counter(
             e.get("dominant_emotion") for e in ctx.emotions
         )
@@ -129,22 +183,29 @@ class StabilityMetric:
             # Dominant negative emotion = unstable baseline
             baseline_score = int((1 - dominance_ratio) * 100)
 
-        score_components.append(max(0, min(100, baseline_score)))
-        signals.append("baseline_consistency")
+        components.append(SignalComponent(
+            score=max(0, min(100, baseline_score)),
+            confidence=base_confidence,
+            signal_name="baseline_consistency",
+        ))
 
         # ── Aggregate ────────────────────────────────────────────────────
-        final_score = int(sum(score_components) / len(score_components))
-        assessment_confidence = min(len(score_components) / 4, 1.0)
+        result = confidence_weighted_average(components)
+        signals = [c["signal_name"] for c in components]
 
         return MetricResult(
             name=self.name,
-            score=final_score,
-            level=score_to_level(final_score),
-            confidence=round(assessment_confidence, 2),
+            score=result["final_score"],
+            raw_score=result["raw_score"],
+            level=score_to_level(result["final_score"]),
+            confidence=result["overall_confidence"],
+            confidence_details=result["confidence_details"],
             evidence=evidence,
             explanation=(
-                f"Emotional stability assessed using {len(score_components)} signal(s): "
-                f"{', '.join(signals)}."
+                f"Emotional stability assessed using {len(components)} signal(s): "
+                f"{', '.join(signals)}. "
+                f"Weighted score: {result['final_score']}, "
+                f"unweighted: {result['raw_score']}."
             ),
             signals_used=signals,
         )
