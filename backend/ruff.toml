@@ -1,0 +1,7 @@
+[lint]
+select = ["E", "F", "W"]
+ignore = ["E501"]  # ignore line length — common in FastAPI
+
+[lint.per-file-ignores]
+"tests/*" = ["F401"]  # unused imports fine in tests
+"alembic/*" = ["F401"]
