@@ -124,3 +124,35 @@ class IntegrityEvent(Base):
     severity = Column(String)
     details = Column(JSONB, nullable=True)
     session = relationship("Session", backref="integrity_events")
+
+
+class EvaluationResult(Base):
+    __tablename__ = "evaluation_results"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"), index=True)
+    category = Column(String, index=True)  # e.g., 'technical', 'communication', 'domain_knowledge'
+    rule_score = Column(Float, nullable=True)
+    llm_score = Column(Float, nullable=True)
+    combined_score = Column(Float, nullable=True)
+    strengths = Column(JSONB, nullable=True)  # list of strings
+    improvement_areas = Column(JSONB, nullable=True)  # list of strings
+    overall_assessment = Column(Text, nullable=True)
+    correct_concepts = Column(JSONB, nullable=True)  # list of strings
+    missing_concepts = Column(JSONB, nullable=True)  # list of strings
+    potential_inaccuracies = Column(JSONB, nullable=True)  # list of strings
+    confidence_level = Column(String, nullable=True)  # High, Medium, Low
+    evidence = Column(JSONB, nullable=True)  # list of transcript quotes
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    session = relationship("Session", backref="evaluation_results")
+
+
+class EvaluationFeedback(Base):
+    __tablename__ = "evaluation_feedbacks"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"), index=True)
+    recruiter_id = Column(UUID(as_uuid=True), ForeignKey("recruiters.id"), nullable=True)
+    evaluation_category = Column(String, index=True)
+    decision = Column(String)  # 'Agree', 'Disagree'
+    correction_notes = Column(Text, nullable=True)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    session = relationship("Session", backref="evaluation_feedbacks")
