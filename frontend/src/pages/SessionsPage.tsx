@@ -229,8 +229,7 @@ export default function SessionsPage() {
                                             </div>
                                         </div>
                                     )}
-                                    {/* Temporarily disabled until properly wired */}
-                                    {/* <PanelSection sessionId={session.session_id} token={token!} /> */}
+                                    <PanelSection sessionId={session.session_id} />
                                     {/* Action Buttons */}
                                     <div style={{ marginTop: 'auto', paddingTop: '1.25rem', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
                                         {session.status === 'active' && (
@@ -437,7 +436,7 @@ export default function SessionsPage() {
     );
 }
 
-function PanelSection({ sessionId, token }: { sessionId: string; token: string }) {
+function PanelSection({ sessionId }: { sessionId: string }) {
         const [members, setMembers] = useState<any[]>([])
         const [name, setName] = useState('')
         const [email, setEmail] = useState('')
@@ -447,11 +446,9 @@ function PanelSection({ sessionId, token }: { sessionId: string; token: string }
         const [loading, setLoading] = useState(false)
         const [error, setError] = useState('')
 
-        const headers = { Authorization: `Bearer ${token}` }
-
         const fetchMembers = async () => {
             try {
-                const res = await client.get(`/sessions/${sessionId}/panel`, { headers })
+                const res = await client.get(`/sessions/${sessionId}/panel`)
                 setMembers(res.data)
             } catch { }
         }
@@ -466,7 +463,7 @@ function PanelSection({ sessionId, token }: { sessionId: string; token: string }
                 await client.post(`/sessions/${sessionId}/panel`, {
                     name, email, role: role || null,
                     notify_invite: notifyInvite, notify_report: notifyReport,
-                }, { headers })
+                })
                 setName(''); setEmail(''); setRole('')
                 await fetchMembers()
             } catch (err: any) {
@@ -478,7 +475,7 @@ function PanelSection({ sessionId, token }: { sessionId: string; token: string }
 
         const removeMember = async (memberId: string) => {
             try {
-                await client.delete(`/sessions/${sessionId}/panel/${memberId}`, { headers })
+                await client.delete(`/sessions/${sessionId}/panel/${memberId}`)
                 await fetchMembers()
             } catch { }
         }
