@@ -29,6 +29,7 @@ def generate_report(session_id: str, db: DBSession) -> dict:
         EmotionFrame,
         TranscriptChunk,
         SuggestedQuestion,
+        EvaluationResult,
     )
 
     # ── Load session ─────────────────────────────────────────────────────
@@ -109,6 +110,33 @@ def generate_report(session_id: str, db: DBSession) -> dict:
         ]
     except Exception:
         pass
+
+    # Evaluations
+    evaluations = []
+    try:
+        eval_records = (
+            db.query(EvaluationResult)
+            .filter(EvaluationResult.session_id == session_id)
+            .order_by(EvaluationResult.timestamp.asc())
+            .all()
+        )
+        evaluations = [
+            {
+                "category": e.category,
+                "combined_score": e.combined_score,
+                "strengths": e.strengths or [],
+                "improvement_areas": e.improvement_areas or [],
+                "overall_assessment": e.overall_assessment,
+                "correct_concepts": e.correct_concepts or [],
+                "missing_concepts": e.missing_concepts or [],
+                "potential_inaccuracies": e.potential_inaccuracies or [],
+                "confidence_level": e.confidence_level,
+                "evidence": e.evidence or [],
+            }
+            for e in eval_records
+        ]
+    except Exception as e:
+        logger.warning(f"[REPORT] Evaluation query failed: {e}")
 
     # NLP scores
     big_five = {}
@@ -242,4 +270,7 @@ def generate_report(session_id: str, db: DBSession) -> dict:
                 for q in questions
             ],
         },
+
+        # Section 12: Knowledge Assessment (Domain-Aware Evaluation)
+        "knowledge_assessment": evaluations,
     }
