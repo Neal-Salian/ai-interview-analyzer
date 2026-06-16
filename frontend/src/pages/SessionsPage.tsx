@@ -13,7 +13,7 @@ interface EnhancedSession {
     candidate: string | null
     job: string | null
     scheduled_at: string | null
-    status: 'active' | 'completed' | 'scheduled'
+    status: 'active' | 'completed' | 'scheduled' | 'processing'
     metrics?: { sentiment: number; talkCandidate: number; talkInterviewer: number }
     tags?: string[]
 }
@@ -181,7 +181,7 @@ export default function SessionsPage() {
                                         </div>
 
                                         {/* Status Badge */}
-                                        {session.status === 'active' ? (
+                                        {session.status === 'active' && (
                                             <div style={{
                                                 display: 'flex', alignItems: 'center', gap: '6px',
                                                 backgroundColor: 'rgba(255, 184, 106, 0.1)', // Warning/Tertiary tint
@@ -191,10 +191,23 @@ export default function SessionsPage() {
                                                 <div style={{ width: '6px', height: '6px', backgroundColor: 'var(--red)', borderRadius: '50%' }} />
                                                 <span style={{ color: 'var(--red)', fontSize: '11px', fontWeight: 700, letterSpacing: '0.05em' }}>LIVE</span>
                                             </div>
-                                        ) : (
+                                        )}
+                                        {session.status === 'completed' && (
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
                                                 <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>check_circle</span>
                                                 <span style={{ fontSize: '12px', fontWeight: 500 }}>Completed</span>
+                                            </div>
+                                        )}
+                                        {session.status === 'scheduled' && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
+                                                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>event</span>
+                                                <span style={{ fontSize: '12px', fontWeight: 500 }}>Scheduled</span>
+                                            </div>
+                                        )}
+                                        {session.status === 'processing' && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--accent)' }}>
+                                                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>sync</span>
+                                                <span style={{ fontSize: '12px', fontWeight: 500 }}>Processing Report</span>
                                             </div>
                                         )}
                                     </div>
@@ -265,6 +278,19 @@ export default function SessionsPage() {
                                             >
                                                 <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>play_circle</span>
                                                 Start Session
+                                            </button>
+                                        )}
+                                        {session.status === 'processing' && (
+                                            <button
+                                                disabled
+                                                style={{
+                                                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+                                                    backgroundColor: 'transparent', border: '1px solid var(--border)', color: 'var(--text-secondary)', padding: '0.75rem',
+                                                    borderRadius: '6px', fontWeight: 500, cursor: 'not-allowed', fontSize: '13px', opacity: 0.7
+                                                }}
+                                            >
+                                                <span className="material-symbols-outlined" style={{ fontSize: '18px', animation: 'spin 2s linear infinite' }}>sync</span>
+                                                Processing...
                                             </button>
                                         )}
                                         {session.status === 'completed' && (
