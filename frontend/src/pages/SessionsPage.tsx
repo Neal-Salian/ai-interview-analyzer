@@ -1,12 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import client from '../api/client';
 import { useTheme } from '../context/ThemeContext';
 import PageTransition from '../components/PageTransition';
-import { SessionCardSkeleton } from '../components/Skeleton';
+import { SessionCardSkeleton, StatCardSkeleton } from '../components/Skeleton';
 import { SessionCard } from '../components/Sessions/SessionCard';
 import { SessionDetailsDrawer } from '../components/Sessions/SessionDetailsDrawer';
+import { DashboardStats } from '../components/Sessions/DashboardStats';
+import { SearchBar } from '../components/Sessions/SearchBar';
+import { EmptyState } from '../components/Sessions/EmptyState';
+import './SessionsPage.css';
 
 export interface EnhancedSession {
     session_id: string;
@@ -31,6 +35,7 @@ export default function SessionsPage() {
     
     // UI states
     const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
+    const [searchQuery, setSearchQuery] = useState('');
     const [selectedSession, setSelectedSession] = useState<EnhancedSession | null>(null);
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
@@ -95,131 +100,178 @@ export default function SessionsPage() {
         if (selectedSession?.session_id === sessionId) setIsDrawerOpen(false);
     };
 
-    const filteredSessions = sessions.filter(s => filterStatus === 'all' || s.status === filterStatus);
+    // Combined filter + search logic
+    const filteredSessions = useMemo(() => {
+        let result = sessions;
+
+        // Apply status filter
+        if (filterStatus !== 'all') {
+            result = result.filter(s => s.status === filterStatus);
+        }
+
+        // Apply search filter
+        if (searchQuery.trim()) {
+            const query = searchQuery.toLowerCase().trim();
+            result = result.filter(s =>
+                (s.candidate && s.candidate.toLowerCase().includes(query)) ||
+                (s.job && s.job.toLowerCase().includes(query)) ||
+                s.status.toLowerCase().includes(query)
+            );
+        }
+
+        return result;
+    }, [sessions, filterStatus, searchQuery]);
+
+    // Filter counts
+    const filterCounts = useMemo(() => {
+        const searchFiltered = searchQuery.trim()
+            ? sessions.filter(s => {
+                const query = searchQuery.toLowerCase().trim();
+                return (
+                    (s.candidate && s.candidate.toLowerCase().includes(query)) ||
+                    (s.job && s.job.toLowerCase().includes(query)) ||
+                    s.status.toLowerCase().includes(query)
+                );
+            })
+            : sessions;
+
+        return {
+            all: searchFiltered.length,
+            scheduled: searchFiltered.filter(s => s.status === 'scheduled').length,
+            active: searchFiltered.filter(s => s.status === 'active').length,
+            processing: searchFiltered.filter(s => s.status === 'processing').length,
+            completed: searchFiltered.filter(s => s.status === 'completed').length,
+        };
+    }, [sessions, searchQuery]);
 
     const currentDate = new Date().toLocaleDateString('en-US', {
         weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
     });
 
-    const FilterPill = ({ label, value }: { label: string, value: FilterStatus }) => (
-        <button
-            onClick={() => setFilterStatus(value)}
-            style={{
-                background: filterStatus === value ? 'var(--accent)' : 'transparent',
-                color: filterStatus === value ? '#fff' : 'var(--text-secondary)',
-                border: `1px solid ${filterStatus === value ? 'var(--accent)' : 'var(--border)'}`,
-                borderRadius: '999px',
-                padding: '6px 16px',
-                fontSize: '13px',
-                fontWeight: 500,
-                cursor: 'pointer',
-                transition: 'all 0.2s ease'
-            }}
-        >
-            {label}
-        </button>
-    );
+    const handleClearFilters = () => {
+        setFilterStatus('all');
+        setSearchQuery('');
+    };
+
+    const handleOpenCreateSession = () => {
+        fetchCandidates();
+        setShowNewSession(true);
+    };
+
+    const filters: { label: string; value: FilterStatus }[] = [
+        { label: 'All', value: 'all' },
+        { label: 'Scheduled', value: 'scheduled' },
+        { label: 'Active', value: 'active' },
+        { label: 'Processing', value: 'processing' },
+        { label: 'Completed', value: 'completed' },
+    ];
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: 'var(--bg)', color: 'var(--text-primary)' }}>
+        <div className="sessions-page">
             <Navbar />
 
             <PageTransition>
-                <main style={{ padding: '2rem', maxWidth: '1600px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+                <main className="sessions-main">
 
                     {/* Page Header */}
-                    <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'flex-end',
-                        marginBottom: '1.5rem'
-                    }}>
+                    <div className="sessions-header">
                         <div>
-                            <h1 style={{ fontSize: '28px', fontWeight: 600, margin: '0 0 0.5rem 0', letterSpacing: '-0.02em' }}>
+                            <h1 className="sessions-header__title">
                                 Today's Interviews
                             </h1>
-                            <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '14px' }}>
+                            <p className="sessions-header__date">
                                 {currentDate}
                             </p>
                         </div>
 
-                        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                            <button 
+                        <div className="sessions-header__actions">
+                            <button
+                                className="btn-icon"
                                 onClick={fetchSessions}
-                                style={{
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    width: '40px', height: '40px', borderRadius: 'var(--radius-sm, 6px)',
-                                    border: '1px solid var(--border)', backgroundColor: 'transparent',
-                                    color: 'var(--text-secondary)', cursor: 'pointer'
-                                }}
+                                aria-label="Refresh sessions"
                             >
-                                <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>refresh</span>
+                                <span className="material-symbols-outlined" style={{ fontSize: '20px' }} aria-hidden="true">refresh</span>
                             </button>
                         </div>
                     </div>
 
-                    {/* Filters */}
-                    <div style={{ display: 'flex', gap: '8px', marginBottom: '2rem', flexWrap: 'wrap' }}>
-                        <FilterPill label="All" value="all" />
-                        <FilterPill label="Scheduled" value="scheduled" />
-                        <FilterPill label="Active" value="active" />
-                        <FilterPill label="Processing" value="processing" />
-                        <FilterPill label="Completed" value="completed" />
+                    {/* Dashboard Statistics */}
+                    {loading ? (
+                        <div className="stats-row" aria-label="Loading statistics">
+                            {[1, 2, 3, 4, 5].map((i) => (
+                                <StatCardSkeleton key={i} />
+                            ))}
+                        </div>
+                    ) : (
+                        <DashboardStats sessions={sessions} />
+                    )}
+
+                    {/* Search & Filters Row */}
+                    <div className="search-filters-row">
+                        <SearchBar value={searchQuery} onChange={setSearchQuery} />
+                        <div className="filter-pills" role="tablist" aria-label="Filter sessions by status">
+                            {filters.map((f) => (
+                                <button
+                                    key={f.value}
+                                    className={`filter-pill ${filterStatus === f.value ? 'filter-pill--active' : ''}`}
+                                    onClick={() => setFilterStatus(f.value)}
+                                    role="tab"
+                                    aria-selected={filterStatus === f.value}
+                                    aria-label={`${f.label}: ${filterCounts[f.value]} sessions`}
+                                >
+                                    {f.label}
+                                    <span className="filter-pill__count">
+                                        {filterCounts[f.value]}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
+                    {/* Session Grid or Empty State */}
                     {loading ? (
-                        <div style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))',
-                            gap: '1.5rem'
-                        }}>
+                        <div className="session-grid">
                             {[1, 2, 3].map((i) => (
                                 <SessionCardSkeleton key={i} />
                             ))}
                         </div>
+                    ) : filteredSessions.length === 0 && sessions.length > 0 ? (
+                        <EmptyState
+                            hasActiveFilter={filterStatus !== 'all'}
+                            hasSearchQuery={searchQuery.trim().length > 0}
+                            onClearFilters={handleClearFilters}
+                            onCreateSession={handleOpenCreateSession}
+                        />
+                    ) : filteredSessions.length === 0 && sessions.length === 0 ? (
+                        <EmptyState
+                            hasActiveFilter={false}
+                            hasSearchQuery={false}
+                            onClearFilters={handleClearFilters}
+                            onCreateSession={handleOpenCreateSession}
+                        />
                     ) : (
-                        <div style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))',
-                            gap: '1.5rem'
-                        }}>
+                        <div className="session-grid">
                             {/* Create New Session Card */}
-                            <div 
-                                onClick={() => { fetchCandidates(); setShowNewSession(true); }}
-                                style={{
-                                    backgroundColor: 'transparent',
-                                    borderRadius: '12px',
-                                    border: '1px dashed var(--border)',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    textAlign: 'center',
-                                    minHeight: '220px',
-                                    maxHeight: '280px',
-                                    cursor: 'pointer',
-                                    transition: 'background-color 0.2s',
-                                    padding: '1.5rem'
-                                }}
-                                onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--bg-surface)'}
-                                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                            <div
+                                className="create-session-card"
+                                onClick={handleOpenCreateSession}
+                                role="button"
+                                tabIndex={0}
+                                aria-label="Create a new interview session"
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpenCreateSession(); } }}
                             >
-                                <div style={{
-                                    width: '48px', height: '48px', backgroundColor: 'var(--bg-surface-high)',
-                                    borderRadius: '50%', display: 'flex', alignItems: 'center',
-                                    justifyContent: 'center', marginBottom: '1rem', border: '1px solid var(--border)'
-                                }}>
-                                    <span className="material-symbols-outlined" style={{ color: 'var(--accent)', fontSize: '24px' }}>add</span>
+                                <div className="create-session-card__icon-wrap">
+                                    <span className="material-symbols-outlined" style={{ color: 'var(--accent)', fontSize: '26px' }} aria-hidden="true">add</span>
                                 </div>
-                                <h3 style={{ fontSize: '16px', fontWeight: 500, margin: '0 0 6px 0', color: 'var(--text-primary)' }}>Create New Session</h3>
-                                <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '13px', maxWidth: '200px', lineHeight: '1.5' }}>
+                                <h3 className="create-session-card__title">Create New Session</h3>
+                                <p className="create-session-card__desc">
                                     Schedule a new interview for a candidate.
                                 </p>
                             </div>
 
                             {/* Session Cards */}
                             {filteredSessions.map((session) => (
-                                <SessionCard 
+                                <SessionCard
                                     key={session.session_id}
                                     session={session}
                                     onClick={() => { setSelectedSession(session); setIsDrawerOpen(true); }}
@@ -231,10 +283,18 @@ export default function SessionsPage() {
                             ))}
                         </div>
                     )}
+
+                    {/* Future Extensions Slot */}
+                    <section
+                        id="dashboard-extensions"
+                        className="dashboard-extensions"
+                        aria-label="Future dashboard modules"
+                    />
+
                 </main>
             </PageTransition>
 
-            <SessionDetailsDrawer 
+            <SessionDetailsDrawer
                 session={selectedSession}
                 isOpen={isDrawerOpen}
                 onClose={() => { setIsDrawerOpen(false); setTimeout(() => setSelectedSession(null), 300); }}
@@ -245,79 +305,53 @@ export default function SessionsPage() {
             />
 
             {showNewSession && (
-                <div style={{
-                    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    zIndex: 2000
-                }}>
-                    <div style={{
-                        background: 'var(--bg-surface)', border: '1px solid var(--border)',
-                        borderRadius: '10px', padding: '32px', width: '400px'
-                    }}>
-                        <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '24px' }}>
+                <div className="modal-backdrop" onClick={() => { setShowNewSession(false); setSelectedCandidate(''); setScheduledAt(''); }}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                        <h2 className="modal-title">
                             New Session
                         </h2>
-                        <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>
+                        <label className="modal-label" htmlFor="session-candidate-select">
                             Select Candidate
                         </label>
                         <select
+                            id="session-candidate-select"
                             value={selectedCandidate}
                             onChange={e => setSelectedCandidate(e.target.value)}
-                            style={{
-                                width: '100%', background: 'var(--bg)',
-                                border: '1px solid var(--border)', borderRadius: '6px',
-                                padding: '10px', color: 'var(--text-primary)',
-                                fontSize: '14px', marginBottom: '24px'
-                            }}
+                            className="modal-input"
+                            aria-label="Select a candidate for the session"
                         >
                             <option value="">Choose a candidate...</option>
                             {candidates.map(c => (
                                 <option key={c.id} value={c.id}>{c.name}</option>
                             ))}
                         </select>
-                        <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>
+                        <label className="modal-label" htmlFor="session-schedule-input">
                             Schedule Date & Time
                         </label>
                         <input
+                            id="session-schedule-input"
                             type="datetime-local"
                             value={scheduledAt}
                             onChange={e => setScheduledAt(e.target.value)}
-                            style={{
-                                width: '100%',
-                                background: 'var(--bg)',
-                                border: '1px solid var(--border)',
-                                borderRadius: '6px',
-                                padding: '10px',
-                                color: 'var(--text-primary)',
-                                fontSize: '14px',
-                                marginBottom: '24px',
-                                colorScheme: theme
-                            }}
+                            className="modal-input"
+                            style={{ colorScheme: theme }}
+                            aria-label="Schedule date and time"
                         />
-                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                        <div className="modal-actions">
                             <button
+                                className="modal-btn--cancel"
                                 onClick={() => {
                                     setShowNewSession(false);
                                     setSelectedCandidate('');
                                     setScheduledAt('');
                                 }}
-                                style={{
-                                    background: 'var(--bg)', border: '1px solid var(--border)',
-                                    borderRadius: '6px', padding: '8px 16px',
-                                    color: 'var(--text-secondary)', cursor: 'pointer'
-                                }}
                             >
                                 Cancel
                             </button>
                             <button
+                                className="modal-btn--create"
                                 onClick={handleNewSession}
                                 disabled={!selectedCandidate || creating}
-                                style={{
-                                    background: 'var(--accent)', backgroundImage: 'var(--accent-gradient)', boxShadow: 'var(--accent-glow)', border: 'none',
-                                    borderRadius: '6px', padding: '8px 16px',
-                                    color: '#fff', cursor: 'pointer', fontWeight: 600,
-                                    opacity: !selectedCandidate || creating ? 0.5 : 1
-                                }}
                             >
                                 {creating ? 'Creating...' : 'Create Session'}
                             </button>

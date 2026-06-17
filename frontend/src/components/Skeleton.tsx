@@ -1,9 +1,6 @@
 export function SkeletonCard({ className = '', style = {}, children }: { className?: string, style?: React.CSSProperties, children?: React.ReactNode }) {
     return (
-        <div className={`animate-pulse ${className}`} style={{
-            backgroundColor: 'var(--bg-surface)',
-            borderRadius: '10px',
-            border: '1px solid var(--border)',
+        <div className={`skeleton-card ${className}`} style={{
             padding: '1.5rem',
             ...style
         }}>
@@ -12,13 +9,11 @@ export function SkeletonCard({ className = '', style = {}, children }: { classNa
     );
 }
 
-export function SkeletonText({ width = '100%', height = '16px', className = '', style = {} }: { width?: string, height?: string, className?: string, style?: React.CSSProperties }) {
+export function SkeletonText({ width = '100%', height = '16px', style = {} }: { width?: string, height?: string, style?: React.CSSProperties }) {
     return (
-        <div className={`animate-pulse ${className}`} style={{
+        <div className="skeleton-shimmer" style={{
             width,
             height,
-            backgroundColor: 'var(--border)',
-            borderRadius: '4px',
             ...style
         }} />
     );
@@ -26,29 +21,47 @@ export function SkeletonText({ width = '100%', height = '16px', className = '', 
 
 export function SessionCardSkeleton() {
     return (
-        <div className="animate-pulse" style={{
-            backgroundColor: 'var(--bg-surface)',
-            borderRadius: '10px',
-            border: '1px solid var(--border)',
-            padding: '1.5rem',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '1.25rem',
-        }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <div>
-                    <div style={{ width: '140px', height: '22px', backgroundColor: 'var(--border)', borderRadius: '4px', marginBottom: '8px' }}></div>
-                    <div style={{ width: '100px', height: '16px', backgroundColor: 'var(--bg)', borderRadius: '4px', marginBottom: '6px' }}></div>
-                    <div style={{ width: '80px', height: '16px', backgroundColor: 'var(--bg)', borderRadius: '4px' }}></div>
+        <div className="skeleton-card" aria-hidden="true">
+            {/* Header skeleton */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '20px 20px 0 20px' }}>
+                <div style={{ display: 'flex', gap: '14px', flex: 1 }}>
+                    <div className="skeleton-shimmer" style={{ width: '44px', height: '44px', borderRadius: '50%', minWidth: '44px' }} />
+                    <div style={{ flex: 1 }}>
+                        <div className="skeleton-shimmer" style={{ width: '65%', height: '18px', marginBottom: '8px' }} />
+                        <div className="skeleton-shimmer" style={{ width: '45%', height: '14px' }} />
+                    </div>
                 </div>
-                <div style={{ width: '80px', height: '24px', backgroundColor: 'var(--border)', borderRadius: '12px' }}></div>
+                <div className="skeleton-shimmer" style={{ width: '90px', height: '26px', borderRadius: '999px' }} />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: 'auto' }}>
-                <div style={{ width: '100%', height: '60px', backgroundColor: 'var(--bg)', borderRadius: '6px' }}></div>
-                <div style={{ width: '100%', height: '60px', backgroundColor: 'var(--bg)', borderRadius: '6px' }}></div>
+
+            {/* Body skeleton — meta grid */}
+            <div style={{ padding: '16px 20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                {[1, 2, 3, 4].map((i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div className="skeleton-shimmer" style={{ width: '32px', height: '32px', borderRadius: '8px', minWidth: '32px' }} />
+                        <div style={{ flex: 1 }}>
+                            <div className="skeleton-shimmer" style={{ width: '50%', height: '10px', marginBottom: '4px' }} />
+                            <div className="skeleton-shimmer" style={{ width: '80%', height: '14px' }} />
+                        </div>
+                    </div>
+                ))}
             </div>
-            <div style={{ marginTop: 'auto', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
-                <div style={{ width: '100%', height: '36px', backgroundColor: 'var(--border)', borderRadius: '6px' }}></div>
+
+            {/* Footer skeleton */}
+            <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)' }}>
+                <div className="skeleton-shimmer" style={{ width: '100%', height: '38px', borderRadius: '6px' }} />
+            </div>
+        </div>
+    );
+}
+
+export function StatCardSkeleton() {
+    return (
+        <div className="skeleton-stat-card" aria-hidden="true">
+            <div className="skeleton-shimmer" style={{ width: '44px', height: '44px', borderRadius: '12px', minWidth: '44px' }} />
+            <div>
+                <div className="skeleton-shimmer" style={{ width: '48px', height: '24px', marginBottom: '6px' }} />
+                <div className="skeleton-shimmer" style={{ width: '80px', height: '14px' }} />
             </div>
         </div>
     );
