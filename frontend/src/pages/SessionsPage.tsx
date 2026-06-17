@@ -155,22 +155,6 @@ export default function SessionsPage() {
                             >
                                 <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>refresh</span>
                             </button>
-
-                            <button
-                                onClick={() => {
-                                    fetchCandidates();
-                                    setShowNewSession(true);
-                                }}
-                                style={{
-                                    display: 'flex', alignItems: 'center', gap: '0.5rem',
-                                    backgroundColor: 'var(--accent)', backgroundImage: 'var(--accent-gradient)', boxShadow: 'var(--accent-glow)', color: '#ffffff',
-                                    border: 'none', padding: '0 1rem', height: '40px',
-                                    borderRadius: 'var(--radius-sm, 6px)', fontWeight: 500,
-                                    fontSize: '13px', cursor: 'pointer'
-                                }}>
-                                <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add</span>
-                                New Session
-                            </button>
                         </div>
                     </div>
 
