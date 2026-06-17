@@ -1,4 +1,3 @@
-# docker-compose.yml
 services:
   db:
     image: postgres:15
@@ -12,6 +11,11 @@ services:
       - "5434:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   nginx-rtmp:
     image: alfg/nginx-rtmp
@@ -19,9 +23,43 @@ services:
     restart: always
     ports:
       - "1935:1935"
-      - "8080:80" # stat page now exposed too
+      - "8080:8080"
     volumes:
       - ./nginx-rtmp.conf:/etc/nginx/nginx.conf
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: interview_backend
+    restart: always
+    ports:
+      - "8001:8001"
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-interview_db}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:8001
+    container_name: interview_frontend
+    restart: always
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:
