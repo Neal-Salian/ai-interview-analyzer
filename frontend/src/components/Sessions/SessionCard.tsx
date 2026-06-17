@@ -38,157 +38,137 @@ export function SessionCard({ session, onClick, onStart, onEnd, onJoin, onViewRe
         action(e);
     };
 
+    // Determine interview type from tags or default
+    const interviewType = session.tags?.[0] || 'Technical Interview';
+
     return (
-        <div 
+        <div
+            className={`session-card ${session.status === 'completed' ? 'session-card--completed' : ''}`}
             onClick={onClick}
-            style={{
-                backgroundColor: 'var(--bg-surface)',
-                borderRadius: '12px',
-                border: '1px solid var(--border)',
-                boxShadow: 'var(--shadow-card)',
-                padding: '1.5rem',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '1.25rem',
-                opacity: session.status === 'completed' ? 0.8 : 1,
-                transition: 'transform 0.2s, box-shadow 0.2s, opacity 0.2s',
-                cursor: 'pointer',
-                minHeight: '220px',
-                maxHeight: '280px',
-                position: 'relative'
-            }}
-            onMouseEnter={e => {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.boxShadow = 'var(--shadow-elevated)';
-                e.currentTarget.style.opacity = '1';
-            }}
-            onMouseLeave={e => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = 'var(--shadow-card)';
-                e.currentTarget.style.opacity = session.status === 'completed' ? '0.8' : '1';
-            }}
+            role="button"
+            tabIndex={0}
+            aria-label={`Session with ${session.candidate || 'Unknown Candidate'}, ${session.status}`}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
         >
-            {/* Header: Avatar, Info, Status */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
-                <div style={{ display: 'flex', gap: '1rem', flex: 1, minWidth: 0 }}>
+            {/* Card Header */}
+            <div className="session-card__header">
+                <div className="session-card__candidate-info">
                     <AvatarInitials name={session.candidate} size={44} />
-                    <div style={{ minWidth: 0 }}>
-                        <h2 style={{ 
-                            fontSize: '16px', 
-                            fontWeight: 600, 
-                            margin: '0 0 4px 0', 
-                            whiteSpace: 'nowrap', 
-                            overflow: 'hidden', 
-                            textOverflow: 'ellipsis' 
-                        }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                        <h2 className="session-card__candidate-name">
                             {session.candidate || 'Unknown Candidate'}
                         </h2>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '4px' }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>work</span>
-                            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{session.job || 'No Job Specified'}</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>schedule</span>
-                            {formatSessionDate(session.scheduled_at)}
+                        <div className="session-card__candidate-role">
+                            <span className="material-symbols-outlined" aria-hidden="true">work</span>
+                            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {session.job || 'No Role Specified'}
+                            </span>
                         </div>
                     </div>
                 </div>
                 <StatusBadge status={session.status} />
             </div>
 
-            {/* Metadata Row */}
-            <div style={{ 
-                display: 'flex', 
-                gap: '12px', 
-                marginTop: 'auto',
-                fontSize: '13px', 
-                color: 'var(--text-secondary)',
-                backgroundColor: 'var(--bg)',
-                padding: '10px 12px',
-                borderRadius: '8px'
-            }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>group</span>
-                    {panelCount !== null ? `${panelCount} Panel Member${panelCount !== 1 ? 's' : ''}` : 'Loading...'}
+            {/* Card Body — Structured Metadata */}
+            <div className="session-card__body">
+                <div className="session-card__meta-grid">
+                    <div className="session-card__meta-item">
+                        <div className="session-card__meta-icon">
+                            <span className="material-symbols-outlined" aria-hidden="true">calendar_today</span>
+                        </div>
+                        <div>
+                            <div className="session-card__meta-label">Date & Time</div>
+                            <div className="session-card__meta-value">{formatSessionDate(session.scheduled_at)}</div>
+                        </div>
+                    </div>
+
+                    <div className="session-card__meta-item">
+                        <div className="session-card__meta-icon">
+                            <span className="material-symbols-outlined" aria-hidden="true">group</span>
+                        </div>
+                        <div>
+                            <div className="session-card__meta-label">Panel</div>
+                            <div className="session-card__meta-value">
+                                {panelCount !== null ? `${panelCount} Member${panelCount !== 1 ? 's' : ''}` : '—'}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="session-card__meta-item">
+                        <div className="session-card__meta-icon">
+                            <span className="material-symbols-outlined" aria-hidden="true">timer</span>
+                        </div>
+                        <div>
+                            <div className="session-card__meta-label">Duration</div>
+                            <div className="session-card__meta-value">45 min</div>
+                        </div>
+                    </div>
+
+                    <div className="session-card__meta-item">
+                        <div className="session-card__meta-icon">
+                            <span className="material-symbols-outlined" aria-hidden="true">location_on</span>
+                        </div>
+                        <div>
+                            <div className="session-card__meta-label">Type</div>
+                            <div className="session-card__meta-value" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' }}>
+                                {interviewType}
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                {session.status === 'active' && session.metrics && (
-                    <>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>forum</span>
-                            Ratio {session.metrics.talkCandidate}% / {session.metrics.talkInterviewer}%
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>mood</span>
-                            {session.metrics.sentiment}%
-                        </div>
-                    </>
-                )}
             </div>
 
-            {/* Actions */}
-            <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+            {/* Card Footer — Actions */}
+            <div className="session-card__footer">
                 {session.status === 'active' && (
                     <>
                         <button
+                            className="session-card__action session-card__action--primary"
                             onClick={(e) => handleActionClick(e, onJoin)}
-                            style={{
-                                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                                backgroundColor: 'var(--accent)', backgroundImage: 'var(--accent-gradient)', color: '#fff', 
-                                border: 'none', padding: '10px', borderRadius: '6px', fontWeight: 500, cursor: 'pointer', fontSize: '13px'
-                            }}
+                            aria-label="Join live session"
                         >
-                            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>login</span>
+                            <span className="material-symbols-outlined" aria-hidden="true">login</span>
                             Join Session
                         </button>
                         <button
+                            className="session-card__action session-card__action--danger"
                             onClick={(e) => handleActionClick(e, onEnd)}
-                            style={{
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                                backgroundColor: 'transparent', border: '1px solid var(--danger)', color: 'var(--danger)', 
-                                padding: '10px 12px', borderRadius: '6px', fontWeight: 500, cursor: 'pointer', fontSize: '13px'
-                            }}
+                            aria-label="End session"
                             title="End Session"
                         >
-                            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>stop_circle</span>
+                            <span className="material-symbols-outlined" aria-hidden="true">stop_circle</span>
                         </button>
                     </>
                 )}
                 {session.status === 'scheduled' && (
                     <button
+                        className="session-card__action session-card__action--secondary"
                         onClick={(e) => handleActionClick(e, onStart)}
-                        style={{
-                            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                            backgroundColor: 'var(--bg-surface-high)', border: '1px solid var(--border)', color: 'var(--text-primary)', 
-                            padding: '10px', borderRadius: '6px', fontWeight: 500, cursor: 'pointer', fontSize: '13px'
-                        }}
+                        aria-label="Start session"
+                        style={{ width: '100%' }}
                     >
-                        <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>play_circle</span>
+                        <span className="material-symbols-outlined" aria-hidden="true">play_circle</span>
                         Start Session
                     </button>
                 )}
                 {session.status === 'processing' && (
                     <button
+                        className="session-card__action session-card__action--disabled"
                         disabled
-                        style={{
-                            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                            backgroundColor: 'transparent', border: '1px solid var(--border)', color: 'var(--text-secondary)', 
-                            padding: '10px', borderRadius: '6px', fontWeight: 500, cursor: 'not-allowed', fontSize: '13px', opacity: 0.7
-                        }}
+                        aria-label="Processing report"
+                        style={{ width: '100%' }}
                     >
-                        <span className="material-symbols-outlined" style={{ fontSize: '18px', animation: 'spin 2s linear infinite' }}>sync</span>
+                        <span className="material-symbols-outlined" style={{ animation: 'spin 2s linear infinite' }} aria-hidden="true">sync</span>
                         Processing...
                     </button>
                 )}
                 {session.status === 'completed' && (
                     <button
+                        className="session-card__action session-card__action--ghost"
                         onClick={(e) => handleActionClick(e, onViewReport)}
-                        style={{
-                            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                            backgroundColor: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border)', 
-                            padding: '10px', borderRadius: '6px', fontWeight: 500, cursor: 'pointer', fontSize: '13px'
-                        }}
+                        aria-label="View interview report"
                     >
-                        <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>assessment</span>
+                        <span className="material-symbols-outlined" aria-hidden="true">assessment</span>
                         View Report
                     </button>
                 )}
