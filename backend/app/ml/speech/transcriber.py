@@ -4,8 +4,13 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-model = whisper.load_model("small")  # Phase 4: upgraded from "base" for ~4x accuracy
+model = None
 
+def _get_model():
+    global model
+    if model is None:
+        model = whisper.load_model("small")  # Phase 4: upgraded from "base" for ~4x accuracy
+    return model
 
 import av
 
@@ -41,7 +46,8 @@ def transcribe_chunk(audio_packets: list) -> str:
     except Exception as e:
         logger.warning(f"[TRANSCRIBER] audio cleaning failed, using raw: {e}")
 
-    result = model.transcribe(audio_array, fp16=False)
+    m = _get_model()
+    result = m.transcribe(audio_array, fp16=False)
     
     text = result["text"].strip()
 
