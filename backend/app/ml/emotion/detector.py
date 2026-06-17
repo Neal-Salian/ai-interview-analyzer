@@ -1,7 +1,5 @@
-from deepface import DeepFace
-
-
 def analyze_frame(frame):
+    from deepface import DeepFace
     result = DeepFace.analyze(
         frame,
         actions=["emotion"],
