@@ -52,6 +52,18 @@ export function DashboardStats({ sessions }: DashboardStatsProps) {
             icon: 'radio_button_checked',
             colorClass: 'stat-card__icon--active',
         },
+        {
+            label: 'Cancelled',
+            value: sessions.filter(s => s.status === 'cancelled').length,
+            icon: 'cancel',
+            colorClass: 'stat-card__icon--cancelled',
+        },
+        {
+            label: 'No-Shows',
+            value: sessions.filter(s => s.status === 'no_show').length,
+            icon: 'person_off',
+            colorClass: 'stat-card__icon--noshow',
+        },
     ];
 
     return (
