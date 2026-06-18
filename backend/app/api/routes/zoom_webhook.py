@@ -25,6 +25,52 @@ logger = logging.getLogger(__name__)
 TIMESTAMP_TOLERANCE_SECONDS = 300  # 5 minutes
 
 
+# ── In-memory idempotency guard ───────────────────────────────────────────────
+# Zoom may deliver the same webhook event multiple times (retries on timeout,
+# network issues, or edge-triggered duplicates).  This lightweight guard
+# prevents processing the same (event_type, meeting_id) pair more than once
+# within a short TTL window.
+#
+# Limitations:
+#   - In-memory only: does not survive server restarts.
+#   - Per-process: does not protect across multiple worker processes.
+#   - NOT a substitute for database-level idempotency constraints.
+#
+# For this single-process asyncio server, it is sufficient to close the race
+# windows between duplicate deliveries that arrive seconds apart.
+
+_IDEMPOTENCY_TTL_SECONDS = 300  # 5-minute window matches Zoom's retry policy
+_processed_events: dict[str, float] = {}  # key → timestamp of first processing
+
+
+def _is_duplicate_event(event_type: str, meeting_id: str) -> bool:
+    """
+    Returns True if this (event_type, meeting_id) was already processed
+    within the TTL window.  If not, marks it as processed and returns False.
+
+    Also lazily prunes expired entries to prevent unbounded memory growth.
+    """
+    key = f"{event_type}:{meeting_id}"
+    now = time.time()
+
+    # Lazy pruning: remove expired entries on each call.
+    # With typical webhook volume (tens per minute) this is cheap.
+    expired = [k for k, ts in _processed_events.items() if now - ts > _IDEMPOTENCY_TTL_SECONDS]
+    for k in expired:
+        del _processed_events[k]
+
+    if key in _processed_events:
+        age = now - _processed_events[key]
+        logger.info(
+            f"[idempotency] duplicate {event_type} for meeting {meeting_id} "
+            f"(first seen {age:.1f}s ago), skipping"
+        )
+        return True
+
+    _processed_events[key] = now
+    return False
+
+
 # ── Signature helpers ──────────────────────────────────────────────────────────
 
 def _sign_token(plain_token: str) -> str:
@@ -153,6 +199,11 @@ async def zoom_webhook(
     # ── meeting.started ───────────────────────────────────────────────────────
     if event == "meeting.started":
         meeting_id = str(meeting_data.get("id", ""))
+
+        # Idempotency: reject duplicate deliveries before any DB work
+        if _is_duplicate_event("meeting.started", meeting_id):
+            return JSONResponse(status_code=200, content={"message": "Already processed"})
+
         topic = meeting_data.get("topic", "Unknown")
         host_email = meeting_data.get("host_email", "")
 
@@ -229,6 +280,10 @@ async def zoom_webhook(
     if event == "meeting.ended":
         meeting_id = str(meeting_data.get("id", ""))
         logger.info(f"[webhook] meeting.ended received for meeting {meeting_id}")
+
+        # Idempotency: reject duplicate deliveries before any DB/teardown work
+        if _is_duplicate_event("meeting.ended", meeting_id):
+            return JSONResponse(status_code=200, content={"message": "Already processed"})
 
         session = get_session_by_meeting_id(meeting_id)
         if not session:
