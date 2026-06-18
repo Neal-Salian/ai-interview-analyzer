@@ -1,0 +1,375 @@
+/* ============================================
+   Interview History Page — Table-specific Styles
+   Shared layout/search/filter/empty-state styles
+   come from SessionsPage.css.
+   ============================================ */
+
+/* ---- History Table ---- */
+.history-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background-color: var(--bg-surface);
+  box-shadow: var(--shadow-card);
+  animation: fadeInUp 0.35s ease-out both;
+}
+
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.history-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.history-table th {
+  padding: 14px 20px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  background-color: var(--bg-surface-high);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.history-table th.sortable {
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.history-table th.sortable:hover {
+  color: var(--text-primary);
+}
+
+.history-table th.sortable .sort-icon {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+  font-size: 14px;
+  vertical-align: middle;
+  opacity: 0.6;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.history-table th.sortable:hover .sort-icon {
+  opacity: 1;
+}
+
+.history-table td {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+
+.history-table tbody tr {
+  transition: background-color 0.15s ease;
+}
+
+.history-table tbody tr:hover {
+  background-color: var(--bg-surface-high);
+}
+
+.history-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ---- Candidate cell ---- */
+.history-candidate {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.history-candidate__name {
+  font-weight: 600;
+  font-family: var(--font-heading);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+/* ---- Score badge ---- */
+.score-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-heading);
+}
+
+.score-badge--high {
+  background-color: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
+}
+
+.score-badge--medium {
+  background-color: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+}
+
+.score-badge--low {
+  background-color: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+
+.score-badge--none {
+  background-color: var(--bg-surface-high);
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 12px;
+}
+
+/* ---- Recommendation badge ---- */
+.rec-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.rec-badge--strong-hire {
+  background-color: rgba(34, 197, 94, 0.12);
+  color: #16a34a;
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.rec-badge--hire {
+  background-color: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.rec-badge--consider {
+  background-color: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.rec-badge--no-hire {
+  background-color: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.rec-badge--pending {
+  background-color: var(--bg-surface-high);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+/* ---- Row actions ---- */
+.history-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.history-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: var(--font-body);
+  white-space: nowrap;
+  border: 1px solid var(--border);
+  background-color: transparent;
+  color: var(--text-secondary);
+}
+
+.history-action-btn:hover {
+  background-color: var(--bg-surface-high);
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+
+.history-action-btn--primary {
+  background-color: var(--accent);
+  background-image: var(--accent-gradient);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: var(--accent-glow);
+}
+
+.history-action-btn--primary:hover {
+  filter: brightness(1.1);
+  border-color: transparent;
+  color: #fff;
+}
+
+.history-action-btn .material-symbols-outlined {
+  font-size: 15px;
+}
+
+/* ---- Pagination ---- */
+.history-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.history-pagination__info {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.history-pagination__controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-pagination__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: var(--font-body);
+  border: 1px solid var(--border);
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.history-pagination__btn:hover:not(:disabled) {
+  background-color: var(--bg-surface-high);
+  border-color: var(--text-secondary);
+}
+
+.history-pagination__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.history-pagination__btn .material-symbols-outlined {
+  font-size: 16px;
+}
+
+.history-pagination__page {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  background-color: var(--accent);
+  background-image: var(--accent-gradient);
+  color: #fff;
+  box-shadow: var(--accent-glow);
+}
+
+/* ---- Job Filter Dropdown ---- */
+.job-filter-select {
+  padding: 7px 32px 7px 12px;
+  background-color: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  white-space: nowrap;
+}
+
+.job-filter-select:hover {
+  background-color: var(--bg-surface);
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
+}
+
+.job-filter-select:focus {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(91, 140, 255, 0.1);
+}
+
+/* ---- Skeleton rows ---- */
+.skeleton-table-row {
+  display: grid;
+  grid-template-columns: 2fr 1.5fr 1fr 1fr 1fr 1fr 1.5fr;
+  gap: 20px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.skeleton-table-row:last-child {
+  border-bottom: none;
+}
+
+.skeleton-cell {
+  height: 16px;
+  border-radius: 4px;
+}
+
+/* ---- Stats row for history ---- */
+.history-stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  animation: fadeInUp 0.4s ease-out;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 1024px) {
+  .history-stats-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .skeleton-table-row {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .history-stats-row {
+    grid-template-columns: 1fr;
+  }
+
+  .history-pagination {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+  }
+
+  .history-pagination__controls {
+    justify-content: center;
+  }
+}
