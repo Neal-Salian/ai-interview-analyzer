@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.registry import register_session, is_active
-from app.db.database import get_db
+from app.db.database import get_db, SessionLocal
 from app.db.models import Candidate, Session as InterviewSession, Recruiter
 from app.db.crud import get_session_by_meeting_id
 from app.ml.stream.rtmp_consumer import consume_stream
@@ -243,12 +243,44 @@ async def zoom_webhook(
             )
             return JSONResponse(status_code=200, content={"message": "Already completed"})
 
-        await teardown_session(session_id=str(session.id), db=db)
+        # ── Fire-and-forget teardown ──────────────────────────────────────
+        # Zoom expects a response within a few seconds or it will retry the
+        # webhook.  teardown_session() cancels the RTMP consumer, runs
+        # metrics aggregation, and sends email notifications — all of which
+        # can take 10+ seconds.  We return 200 immediately and run teardown
+        # as a background asyncio task.
+        #
+        # The request-scoped `db` (from Depends(get_db)) is closed once the
+        # response is sent, so the background task creates its own
+        # SessionLocal() and is responsible for closing it.
+        sid = str(session.id)
 
-        logger.info(f"[webhook] session {session.id} torn down successfully")
+        async def _background_teardown(session_id: str) -> None:
+            bg_db = SessionLocal()
+            try:
+                logger.info(
+                    f"[webhook] background teardown started for session {session_id}"
+                )
+                await teardown_session(session_id=session_id, db=bg_db)
+                logger.info(
+                    f"[webhook] background teardown completed for session {session_id}"
+                )
+            except Exception:
+                logger.exception(
+                    f"[webhook] background teardown FAILED for session {session_id}"
+                )
+            finally:
+                bg_db.close()
+
+        asyncio.create_task(_background_teardown(sid))
+        logger.info(
+            f"[webhook] meeting.ended — teardown task launched for "
+            f"session {sid}, returning 200 to Zoom"
+        )
+
         return JSONResponse(status_code=200, content={
-            "message": "Session torn down",
-            "session_id": str(session.id),
+            "message": "Session teardown initiated",
+            "session_id": sid,
         })
 
     # ── All other events ──────────────────────────────────────────────────────
