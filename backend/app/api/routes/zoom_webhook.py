@@ -126,7 +126,7 @@ def _verify_request_signature(
 
 # ── Consumer retry wrapper ─────────────────────────────────────────────────────
 
-async def run_consumer_with_retry(session_id: str, rtmp_url: str):
+async def run_consumer_with_retry(session_id: str, rtmp_url: str, job_id: str = ""):
     """
     Wraps consume_stream in a retry loop.
     Retries up to 3 times with a 3-second gap on failure.
@@ -139,7 +139,7 @@ async def run_consumer_with_retry(session_id: str, rtmp_url: str):
                 f"[consumer] attempt {attempt}/{max_retries} "
                 f"for session {session_id}"
             )
-            await consume_stream(session_id, rtmp_url)
+            await consume_stream(session_id, rtmp_url, job_id)
             logger.info(f"[consumer] stream ended cleanly for session {session_id}")
             break
         except asyncio.CancelledError:
@@ -297,10 +297,14 @@ async def zoom_webhook(
             )
 
         session_id = str(session.id)
+        job_id = str(session.job_id) if session.job_id else ""
         rtmp_url = f"rtmp://localhost:1935/stream/{meeting_id}"
 
+        if job_id:
+            logger.info(f"[JOB_CONTEXT] Session {session_id} using job_id={job_id}")
+
         consumer_task = asyncio.create_task(
-            run_consumer_with_retry(session_id, rtmp_url)
+            run_consumer_with_retry(session_id, rtmp_url, job_id)
         )
         register_session(session_id, consumer_task)
 
