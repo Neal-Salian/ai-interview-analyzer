@@ -204,6 +204,16 @@ async def zoom_webhook(
         if _is_duplicate_event("meeting.started", meeting_id):
             return JSONResponse(status_code=200, content={"message": "Already processed"})
 
+        # ── Validate meeting_id ───────────────────────────────────────────
+        # A blank or missing meeting ID cannot be mapped to any session and
+        # would create an unlinkable orphan.  Log and exit cleanly.
+        if not meeting_id:
+            logger.error(
+                "[webhook] meeting.started — payload has empty/missing "
+                "meeting ID.  Cannot map to session.  Skipping."
+            )
+            return JSONResponse(status_code=200, content={"message": "Missing meeting ID"})
+
         topic = meeting_data.get("topic", "Unknown")
         host_email = meeting_data.get("host_email", "")
 
@@ -233,20 +243,34 @@ async def zoom_webhook(
             existing.started_at = datetime.datetime.utcnow()
             db.commit()
             session = existing
+            logger.info(
+                f"[webhook] meeting.started — matched pre-existing session "
+                f"{existing.id} (candidate_id={existing.candidate_id}, "
+                f"recruiter_id={existing.recruiter_id})"
+            )
         else:
             # 2. No pre-scheduled session exists for this meeting.
-            #    Create a session with candidate_id=None so the meeting is
-            #    still recorded.  The recruiter can link a candidate later.
+            #    This creates a PARTIALLY POPULATED session (candidate_id=None).
+            #    We still record it so audio/video isn't lost, but log it
+            #    prominently so ops can track orphan rates.
             #    We intentionally do NOT create a Candidate from host_email.
-            logger.warning(
-                f"[webhook] meeting.started — no pre-existing session for "
-                f"meeting {meeting_id} (topic={topic!r}).  Creating session "
-                f"without candidate.  A recruiter can link one later."
-            )
 
-            recruiter = db.query(Recruiter).filter(
-                Recruiter.email == host_email
-            ).first()
+            if not host_email:
+                logger.warning(
+                    f"[webhook] meeting.started — meeting {meeting_id} has no "
+                    f"host_email.  Session will have no recruiter link."
+                )
+
+            recruiter = None
+            if host_email:
+                recruiter = db.query(Recruiter).filter(
+                    Recruiter.email == host_email
+                ).first()
+                if not recruiter:
+                    logger.warning(
+                        f"[webhook] meeting.started — host_email {host_email!r} "
+                        f"does not match any registered recruiter."
+                    )
 
             session = InterviewSession(
                 id=uuid.uuid4(),
@@ -258,6 +282,19 @@ async def zoom_webhook(
             )
             db.add(session)
             db.commit()
+
+            # ── Orphan session audit log ──────────────────────────────────
+            logger.warning(
+                f"[webhook] ORPHAN SESSION CREATED — "
+                f"session_id={session.id}, "
+                f"meeting_id={meeting_id}, "
+                f"topic={topic!r}, "
+                f"candidate_id=None, "
+                f"recruiter_id={session.recruiter_id}, "
+                f"host_email={host_email!r}.  "
+                f"This session has no candidate.  A recruiter must link "
+                f"one through the UI or API."
+            )
 
         session_id = str(session.id)
         rtmp_url = f"rtmp://localhost:1935/stream/{meeting_id}"
@@ -285,10 +322,24 @@ async def zoom_webhook(
         if _is_duplicate_event("meeting.ended", meeting_id):
             return JSONResponse(status_code=200, content={"message": "Already processed"})
 
+        # ── Validate meeting_id ───────────────────────────────────────────
+        if not meeting_id:
+            logger.error(
+                "[webhook] meeting.ended — payload has empty/missing "
+                "meeting ID.  Cannot map to session.  Skipping."
+            )
+            return JSONResponse(status_code=200, content={"message": "Missing meeting ID"})
+
         session = get_session_by_meeting_id(meeting_id)
         if not session:
+            # This can happen if: (a) meeting was never tracked by the platform,
+            # (b) the session was created without a zoom_meeting_id, or
+            # (c) the meeting.started webhook was missed/failed.
             logger.warning(
-                f"[webhook] meeting.ended — no session found for {meeting_id}"
+                f"[webhook] meeting.ended — no session found for meeting "
+                f"{meeting_id}.  Possible causes: meeting not scheduled in "
+                f"platform, meeting.started webhook missed, or meeting ID "
+                f"mismatch.  No teardown will run."
             )
             return JSONResponse(status_code=200, content={"message": "Session not found"})
 
