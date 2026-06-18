@@ -4,8 +4,10 @@ import { useAuth } from '../context/AuthContext'
 import client from '../api/client'
 import PageTransition from '../components/PageTransition'
 import { Link } from 'react-router-dom'
+import { useTheme } from '../context/ThemeContext'
 
 export default function LoginPage() {
+    const { theme, toggleTheme } = useTheme()
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [error, setError] = useState('')
@@ -212,8 +214,40 @@ export default function LoginPage() {
                     alignItems: 'center',
                     justifyContent: 'flex-start',
                     paddingLeft: '10%',
-                    backgroundColor: 'var(--bg-surface)'
+                    backgroundColor: 'var(--bg-surface)',
+                    position: 'relative'
                 }}>
+                    <button
+                        onClick={toggleTheme}
+                        style={{
+                            position: 'absolute',
+                            top: '40px',
+                            right: '40px',
+                            background: 'transparent',
+                            border: '1px solid var(--border)',
+                            color: 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '8px',
+                            borderRadius: '50%',
+                            transition: 'color 0.2s, border-color 0.2s'
+                        }}
+                        aria-label="Toggle theme"
+                        onMouseEnter={e => {
+                            e.currentTarget.style.color = 'var(--text-primary)';
+                            e.currentTarget.style.borderColor = 'var(--text-secondary)';
+                        }}
+                        onMouseLeave={e => {
+                            e.currentTarget.style.color = 'var(--text-secondary)';
+                            e.currentTarget.style.borderColor = 'var(--border)';
+                        }}
+                    >
+                        <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
+                            {theme === 'dark' ? 'light_mode' : 'dark_mode'}
+                        </span>
+                    </button>
                     <div className="animate-fade-up" style={{ width: '380px' }}>
                         <h2 style={{ marginBottom: '8px', fontSize: '26px', fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em', fontWeight: 700, color: 'var(--text-primary)' }}>Welcome back</h2>
                         <p style={{ color: 'var(--text-secondary)', marginBottom: '36px', fontSize: '14px' }}>
