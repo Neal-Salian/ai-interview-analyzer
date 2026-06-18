@@ -54,6 +54,12 @@ async def add_panel_member(
     session: InterviewSession = Depends(get_owned_session),
     db: DBSession = Depends(get_db),
 ):
+    if session.status not in ["scheduled", "draft", "pending"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Panel members cannot be added after an interview has started or completed."
+        )
+
     member = PanelMember(
         id=uuid.uuid4(),
         session_id=session.id,

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import client from '../../api/client';
 
-export function PanelSection({ sessionId }: { sessionId: string }) {
+export function PanelSection({ sessionId, sessionStatus }: { sessionId: string, sessionStatus?: string }) {
     const [members, setMembers] = useState<any[]>([]);
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
@@ -21,6 +21,11 @@ export function PanelSection({ sessionId }: { sessionId: string }) {
     useEffect(() => { fetchMembers() }, [sessionId]);
 
     const addMember = async () => {
+        const isAllowed = ['scheduled', 'draft', 'pending'].includes(sessionStatus || 'scheduled');
+        if (!isAllowed) {
+            setError('Panel members can only be added before the interview begins.');
+            return;
+        }
         if (!name || !email) { setError('Name and email are required'); return; }
         setError('');
         setLoading(true);
@@ -103,9 +108,18 @@ export function PanelSection({ sessionId }: { sessionId: string }) {
 
             {error && <p style={{ color: 'var(--danger)', fontSize: '13px', marginBottom: '8px' }}>{error}</p>}
 
-            <button onClick={addMember} disabled={loading} style={{ width: '100%', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 'var(--radius)', padding: '10px 16px', fontSize: '13px', fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}>
+            <button 
+                onClick={addMember} 
+                disabled={loading || (sessionStatus !== undefined && !['scheduled', 'draft', 'pending'].includes(sessionStatus))} 
+                style={{ width: '100%', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 'var(--radius)', padding: '10px 16px', fontSize: '13px', fontWeight: 600, cursor: loading || (sessionStatus !== undefined && !['scheduled', 'draft', 'pending'].includes(sessionStatus)) ? 'not-allowed' : 'pointer', opacity: loading || (sessionStatus !== undefined && !['scheduled', 'draft', 'pending'].includes(sessionStatus)) ? 0.7 : 1 }}
+            >
                 {loading ? 'Adding...' : 'Add Panel Member'}
             </button>
+            {sessionStatus !== undefined && !['scheduled', 'draft', 'pending'].includes(sessionStatus) && (
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '8px', textAlign: 'center' }}>
+                    Panel members can only be added before the interview begins.
+                </p>
+            )}
         </div>
     );
 }

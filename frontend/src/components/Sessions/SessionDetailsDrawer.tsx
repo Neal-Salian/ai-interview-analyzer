@@ -226,7 +226,7 @@ export function SessionDetailsDrawer({ session, isOpen, onClose, onStart, onEnd,
 
                     {/* Panel Section */}
                     <div style={{ margin: '-24px -20px 0 -20px' }}>
-                        <PanelSection sessionId={session.session_id} />
+                        <PanelSection sessionId={session.session_id} sessionStatus={session.status} />
                     </div>
                 </div>
             </div>
