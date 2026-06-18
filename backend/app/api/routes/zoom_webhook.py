@@ -154,42 +154,59 @@ async def zoom_webhook(
     if event == "meeting.started":
         meeting_id = str(meeting_data.get("id", ""))
         topic = meeting_data.get("topic", "Unknown")
-        host_email = meeting_data.get(
-            "host_email", f"host_{meeting_id}@unknown.com"
-        )
+        host_email = meeting_data.get("host_email", "")
 
+        # ── SAFETY: Do NOT create Candidate records from Zoom host data. ──
+        # The host_email in a Zoom webhook payload is the *recruiter's* email,
+        # not the candidate's.  Auto-creating a Candidate with this email
+        # pollutes the candidates table with recruiter identities, creates
+        # orphan records, and breaks downstream analytics.  Candidate records
+        # must only be created through the scheduling flow where the recruiter
+        # explicitly provides candidate information.
+
+        # 1. Check for a pre-existing session (created during scheduling).
+        #    This is the expected happy-path: the recruiter scheduled the
+        #    interview through the UI, which created a Session row with the
+        #    correct candidate_id, recruiter_id, and zoom_meeting_id.
         existing = get_session_by_meeting_id(meeting_id)
+
         if existing and is_active(str(existing.id)):
             logger.warning(
                 f"[webhook] duplicate meeting.started for {meeting_id}, ignoring"
             )
             return JSONResponse(status_code=200, content={"message": "Already active"})
 
-        candidate = db.query(Candidate).filter(
-            Candidate.email == host_email
-        ).first()
-        if not candidate:
-            candidate = Candidate(
-                id=uuid.uuid4(),
-                name=topic,
-                email=host_email,
-                created_at=datetime.datetime.utcnow(),
+        if existing:
+            # Pre-existing session found — activate it and launch the consumer.
+            existing.status = "active"
+            existing.started_at = datetime.datetime.utcnow()
+            db.commit()
+            session = existing
+        else:
+            # 2. No pre-scheduled session exists for this meeting.
+            #    Create a session with candidate_id=None so the meeting is
+            #    still recorded.  The recruiter can link a candidate later.
+            #    We intentionally do NOT create a Candidate from host_email.
+            logger.warning(
+                f"[webhook] meeting.started — no pre-existing session for "
+                f"meeting {meeting_id} (topic={topic!r}).  Creating session "
+                f"without candidate.  A recruiter can link one later."
             )
-            db.add(candidate)
-            db.flush()
 
-        recruiter = db.query(Recruiter).filter(Recruiter.email == host_email).first()
+            recruiter = db.query(Recruiter).filter(
+                Recruiter.email == host_email
+            ).first()
 
-        session = InterviewSession(
-            id=uuid.uuid4(),
-            candidate_id=candidate.id,
-            recruiter_id=recruiter.id if recruiter else None,
-            zoom_meeting_id=meeting_id,
-            status="active",
-            started_at=datetime.datetime.utcnow(),
-        )
-        db.add(session)
-        db.commit()
+            session = InterviewSession(
+                id=uuid.uuid4(),
+                candidate_id=None,  # No candidate — see safety note above
+                recruiter_id=recruiter.id if recruiter else None,
+                zoom_meeting_id=meeting_id,
+                status="active",
+                started_at=datetime.datetime.utcnow(),
+            )
+            db.add(session)
+            db.commit()
 
         session_id = str(session.id)
         rtmp_url = f"rtmp://localhost:1935/stream/{meeting_id}"
