@@ -116,102 +116,131 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
             audio_buffer.append(packet)
 
             if len(audio_buffer) >= 900:
-                try:
-                    packets_to_process = audio_buffer.copy()
-                    audio_buffer = []
-                    
-                    transcript = await asyncio.to_thread(
-                        transcribe_chunk, packets_to_process
-                    )
-                    transcript_chunk_count += 1
+                packets_to_process = audio_buffer[:]
+                audio_buffer = []
 
-                    # Phase 4: Vocabulary correction with job context
-                    if job_id:
-                        try:
-                            from app.ml.speech.vocabulary_corrector import correct_transcript
-                            from app.db.crud import get_job
-                            job = await asyncio.to_thread(get_job, job_id)
-                            if job:
-                                transcript = correct_transcript(
-                                    transcript,
-                                    job_skills=job.extracted_skills or [],
-                                    candidate_name="",
-                                )
-                        except Exception as e:
-                            logger.warning(f"[VOCAB CORRECTION] {e}")
+                # ── Retry loop for transcription ──────────────────────────
+                # Whisper can transiently fail (OOM, corrupted frame, CUDA
+                # hiccup).  We retry up to MAX_TRANSCRIBE_RETRIES times with
+                # a brief pause before giving up on this chunk.
+                #
+                # If all retries fail we log diagnostics and drop the chunk
+                # rather than prepending it back (which could cause an
+                # infinite retry loop if the audio data itself is corrupt).
+                MAX_TRANSCRIBE_RETRIES = 2
+                transcript = None
 
-                    # Save transcript to DB
-                    await asyncio.to_thread(save_transcript, session_id, transcript)
-
-                    # Score sentiment on this chunk and broadcast
+                for attempt in range(1, MAX_TRANSCRIBE_RETRIES + 1):
                     try:
-                        sentiment = await asyncio.to_thread(
-                            score_sentiment, transcript
+                        transcript = await asyncio.to_thread(
+                            transcribe_chunk, packets_to_process
                         )
-                        await broadcast(session_id, {
-                            "type": "sentiment",
-                            "label": sentiment["label"],
-                            "score": sentiment["score"],
-                        })
-                        logger.debug(
-                            f"[SENTIMENT] {sentiment['label']} "
-                            f"({sentiment['score']})"
-                        )
+                        break  # success
+                    except asyncio.CancelledError:
+                        raise
                     except Exception as e:
-                        logger.warning(f"[SENTIMENT ERROR] {e}")
-
-                    # Broadcast transcript to dashboard
-                    await broadcast(session_id, {
-                        "type": "transcript",
-                        "text": transcript,
-                    })
-
-                    logger.info(f"[TRANSCRIPT] {transcript[:80]}")
-
-                    # ── LLM question generation ───────────────────────────────
-                    # Fire-and-forget so it never blocks the audio loop
-                    if transcript_chunk_count % (LLM_EVERY_N_CHUNKS + 1) == 0:
-                        asyncio.create_task(
-                            _generate_and_broadcast_questions(
-                                session_id=session_id,
-                                transcript=transcript,
-                                job_id=job_id,
-                            )
+                        logger.warning(
+                            f"[TRANSCRIPT] attempt {attempt}/{MAX_TRANSCRIBE_RETRIES} "
+                            f"failed ({type(e).__name__}: {e})"
                         )
+                        if attempt < MAX_TRANSCRIBE_RETRIES:
+                            await asyncio.sleep(0.5)
 
-                    # ── Phase 3: Voice anomaly detection ──────────────────────
+                if transcript is None:
+                    # All retries exhausted — log diagnostic info so the
+                    # lost audio can be investigated.  We do NOT prepend
+                    # packets back to the buffer because corrupt packets
+                    # would cause an infinite failure loop.
+                    logger.error(
+                        f"[TRANSCRIPT] all {MAX_TRANSCRIBE_RETRIES} retries "
+                        f"exhausted — dropping {len(packets_to_process)} "
+                        f"audio packets for session {session_id}."
+                    )
+                    continue  # skip to next packet in the stream
+
+                transcript_chunk_count += 1
+
+                # Phase 4: Vocabulary correction with job context
+                if job_id:
                     try:
-                        from app.ml.integrity.voice_detector import detect_voice_anomaly
-                        from app.ml.speech.transcriber import get_audio_array
-                        
-                        voice_result = await asyncio.to_thread(
-                            detect_voice_anomaly,
-                            get_audio_array(packets_to_process)
-                        )
-                        if voice_result.get("anomaly_detected"):
-                            await asyncio.to_thread(
-                                save_integrity_event, session_id, {
-                                    "event_type": f"voice_{voice_result['anomaly_type']}",
-                                    "severity": "warning",
-                                    "details": voice_result.get("details", {}),
-                                }
+                        from app.ml.speech.vocabulary_corrector import correct_transcript
+                        from app.db.crud import get_job
+                        job = await asyncio.to_thread(get_job, job_id)
+                        if job:
+                            transcript = correct_transcript(
+                                transcript,
+                                job_skills=job.extracted_skills or [],
+                                candidate_name="",
                             )
-                            await broadcast(session_id, {
-                                "type": "integrity_alert",
+                    except Exception as e:
+                        logger.warning(f"[VOCAB CORRECTION] {e}")
+
+                # Save transcript to DB
+                await asyncio.to_thread(save_transcript, session_id, transcript)
+
+                # Score sentiment on this chunk and broadcast
+                try:
+                    sentiment = await asyncio.to_thread(
+                        score_sentiment, transcript
+                    )
+                    await broadcast(session_id, {
+                        "type": "sentiment",
+                        "label": sentiment["label"],
+                        "score": sentiment["score"],
+                    })
+                    logger.debug(
+                        f"[SENTIMENT] {sentiment['label']} "
+                        f"({sentiment['score']})"
+                    )
+                except Exception as e:
+                    logger.warning(f"[SENTIMENT ERROR] {e}")
+
+                # Broadcast transcript to dashboard
+                await broadcast(session_id, {
+                    "type": "transcript",
+                    "text": transcript,
+                })
+
+                logger.info(f"[TRANSCRIPT] {transcript[:80]}")
+
+                # ── LLM question generation ───────────────────────────────
+                # Fire-and-forget so it never blocks the audio loop
+                if transcript_chunk_count % (LLM_EVERY_N_CHUNKS + 1) == 0:
+                    asyncio.create_task(
+                        _generate_and_broadcast_questions(
+                            session_id=session_id,
+                            transcript=transcript,
+                            job_id=job_id,
+                        )
+                    )
+
+                # ── Phase 3: Voice anomaly detection ──────────────────────
+                try:
+                    from app.ml.integrity.voice_detector import detect_voice_anomaly
+                    from app.ml.speech.transcriber import get_audio_array
+                    
+                    voice_result = await asyncio.to_thread(
+                        detect_voice_anomaly,
+                        get_audio_array(packets_to_process)
+                    )
+                    if voice_result.get("anomaly_detected"):
+                        await asyncio.to_thread(
+                            save_integrity_event, session_id, {
                                 "event_type": f"voice_{voice_result['anomaly_type']}",
                                 "severity": "warning",
-                                "details": str(voice_result.get("details", "")),
-                            })
-                    except ImportError:
-                        pass
-                    except Exception as e:
-                        logger.warning(f"[VOICE INTEGRITY] {e}")
-
-                except asyncio.CancelledError:
-                    raise
+                                "details": voice_result.get("details", {}),
+                            }
+                        )
+                        await broadcast(session_id, {
+                            "type": "integrity_alert",
+                            "event_type": f"voice_{voice_result['anomaly_type']}",
+                            "severity": "warning",
+                            "details": str(voice_result.get("details", "")),
+                        })
+                except ImportError:
+                    pass
                 except Exception as e:
-                    logger.warning(f"[TRANSCRIPT ERROR] {e}")
-                    audio_buffer = []
+                    logger.warning(f"[VOICE INTEGRITY] {e}")
 
     logger.info(f"[CONSUMER] Stream ended for session {session_id}")
 
