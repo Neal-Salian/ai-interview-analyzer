@@ -6,6 +6,7 @@ import SessionsPage from './pages/SessionsPage'
 import LiveDashboard from './pages/LiveDashboard'
 import ReportPage from './pages/ReportPage'
 import CandidatePage from './pages/CandidatePage'
+import InterviewHistoryPage from './pages/InterviewHistoryPage'
 import { ThemeProvider } from './context/ThemeContext';
 import RegisterPage from './pages/RegisterPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
@@ -37,6 +38,9 @@ export default function App() {
             } />
             <Route path="/candidates/new" element={
               <ProtectedRoute><CandidatePage /></ProtectedRoute>
+            } />
+            <Route path="/history" element={
+              <ProtectedRoute><InterviewHistoryPage /></ProtectedRoute>
             } />
 
             {/* Default redirect */}
