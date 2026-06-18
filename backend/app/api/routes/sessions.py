@@ -176,3 +176,43 @@ async def end_session(
 
     logger.info(f"[sessions] manually ended session {session.id}")
     return {"session_id": str(session.id), "status": "completed"}
+
+
+@router.patch("/sessions/{session_id}/cancel")
+async def cancel_session(
+    db: DBSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+    session: InterviewSession = Depends(get_owned_session),
+):
+    if session.status in ["completed", "processing"]:
+        raise HTTPException(status_code=400, detail="Completed interviews cannot be cancelled or marked as no-show.")
+    if session.status != "scheduled":
+        raise HTTPException(status_code=400, detail="Only scheduled sessions can be cancelled")
+
+    session.status = "cancelled"
+    session.ended_at = datetime.datetime.utcnow()
+    db.commit()
+    db.refresh(session)
+
+    logger.info(f"[sessions] cancelled session {session.id}")
+    return {"session_id": str(session.id), "status": session.status}
+
+
+@router.patch("/sessions/{session_id}/no_show")
+async def no_show_session(
+    db: DBSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+    session: InterviewSession = Depends(get_owned_session),
+):
+    if session.status in ["completed", "processing"]:
+        raise HTTPException(status_code=400, detail="Completed interviews cannot be cancelled or marked as no-show.")
+    if session.status not in ["scheduled", "active"]:
+        raise HTTPException(status_code=400, detail="Session cannot be marked as no-show from its current status")
+
+    session.status = "no_show"
+    session.ended_at = datetime.datetime.utcnow()
+    db.commit()
+    db.refresh(session)
+
+    logger.info(f"[sessions] marked session {session.id} as no-show")
+    return {"session_id": str(session.id), "status": session.status}
