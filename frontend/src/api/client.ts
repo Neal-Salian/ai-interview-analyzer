@@ -34,9 +34,17 @@ client.interceptors.response.use(
         const originalRequest = err.config
 
         if (err.response?.status === 401 && !originalRequest._retry) {
-            if (originalRequest.url === '/auth/refresh') {
-                localStorage.removeItem('token')
-                window.location.href = '/login'
+            console.error('[DEBUG-AUTH] Caught 401 on URL:', originalRequest.url);
+            
+            // Do not attempt to refresh if the login request itself failed (e.g. invalid credentials)
+            // or if the refresh request failed.
+            if (originalRequest.url === '/auth/login' || originalRequest.url === '/auth/refresh') {
+                if (originalRequest.url === '/auth/refresh') {
+                    console.error('[DEBUG-AUTH] /auth/refresh itself failed with 401. Logging out.');
+                    localStorage.removeItem('token')
+                    localStorage.removeItem('refresh_token')
+                    window.location.href = '/login'
+                }
                 return Promise.reject(err)
             }
 
@@ -53,17 +61,28 @@ client.interceptors.response.use(
             isRefreshing = true
 
             try {
-                const res = await client.post('/auth/refresh')
+                console.log('[DEBUG-AUTH] Calling /auth/refresh...');
+                const localRefreshToken = localStorage.getItem('refresh_token');
+                const res = await client.post('/auth/refresh', {
+                    refresh_token: localRefreshToken
+                });
+                console.log('[DEBUG-AUTH] /auth/refresh succeeded!');
                 const newToken = res.data.access_token
+                const newRefreshToken = res.data.refresh_token
                 localStorage.setItem('token', newToken)
+                if (newRefreshToken) {
+                    localStorage.setItem('refresh_token', newRefreshToken)
+                }
                 isRefreshing = false
                 onRefreshed(newToken)
                 
                 originalRequest.headers.Authorization = `Bearer ${newToken}`
                 return client(originalRequest)
             } catch (refreshErr) {
+                console.error('[DEBUG-AUTH] /auth/refresh failed:', refreshErr);
                 isRefreshing = false
                 localStorage.removeItem('token')
+                localStorage.removeItem('refresh_token')
                 window.location.href = '/login'
                 return Promise.reject(refreshErr)
             }
