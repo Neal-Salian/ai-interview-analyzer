@@ -36,8 +36,8 @@ def todays_sessions(
         InterviewSession.recruiter_id == current_user.id
     ).all()
     def get_status(s: InterviewSession) -> str:
-        if s.status == "completed":
-            return "completed"
+        if s.status in ["completed", "cancelled", "no_show"]:
+            return s.status
         if s.ended_at is not None:
             if s.session_summary is not None:
                 return "completed"
