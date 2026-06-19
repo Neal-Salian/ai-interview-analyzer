@@ -241,6 +241,32 @@
   font-family: var(--font-body);
 }
 
+/* ---- Job Filter Dropdown ---- */
+.job-filter-select {
+  padding: 8px 14px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-body);
+  outline: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 140px;
+}
+
+.job-filter-select:hover,
+.job-filter-select:focus {
+  border-color: var(--text-secondary);
+  background-color: var(--bg-surface-high);
+}
+
+.job-filter-select option {
+  background-color: var(--bg-surface-highest);
+  color: var(--text-primary);
+}
+
 /* ---- Filter Pills ---- */
 .filter-pills {
   display: flex;
