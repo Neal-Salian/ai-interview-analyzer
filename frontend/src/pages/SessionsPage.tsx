@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import client from '../api/client';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import PageTransition from '../components/PageTransition';
 import { SessionCardSkeleton, StatCardSkeleton } from '../components/Skeleton';
 import { SessionCard } from '../components/Sessions/SessionCard';
 import { SessionDetailsDrawer } from '../components/Sessions/SessionDetailsDrawer';
-import { DashboardStats } from '../components/Sessions/DashboardStats';
+import { DashboardStats, type AdminStats } from '../components/Sessions/DashboardStats';
 import { SearchBar } from '../components/Sessions/SearchBar';
 import { EmptyState } from '../components/Sessions/EmptyState';
 import './SessionsPage.css';
@@ -41,6 +42,8 @@ export default function SessionsPage() {
 
     const navigate = useNavigate();
     const { theme } = useTheme();
+    const { role } = useAuth();
+    const [adminStats, setAdminStats] = useState<AdminStats | null>(null);
 
     const fetchSessions = async () => {
         try {
@@ -56,9 +59,30 @@ export default function SessionsPage() {
         }
     };
 
+    const fetchAdminStats = async () => {
+        try {
+            const [usersRes, logsRes] = await Promise.all([
+                client.get('/admin/users'),
+                client.get('/admin/audit-logs').catch(() => ({ data: [] }))
+            ]);
+            const users = usersRes.data;
+            setAdminStats({
+                totalRecruiters: users.filter((u: any) => u.role === 'RECRUITER').length,
+                activeUsers: users.filter((u: any) => u.is_active).length,
+                disabledUsers: users.filter((u: any) => !u.is_active).length,
+                auditLogs: logsRes.data.length
+            });
+        } catch (err) {
+            console.error('Failed to fetch admin stats', err);
+        }
+    };
+
     useEffect(() => {
         fetchSessions();
-    }, []);
+        if (role === 'ADMIN') {
+            fetchAdminStats();
+        }
+    }, [role]);
 
     const fetchCandidates = async () => {
         try {
@@ -219,7 +243,7 @@ export default function SessionsPage() {
                             ))}
                         </div>
                     ) : (
-                        <DashboardStats sessions={sessions} />
+                        <DashboardStats sessions={sessions} role={role} adminStats={adminStats} />
                     )}
 
                     {/* Search & Filters Row */}
