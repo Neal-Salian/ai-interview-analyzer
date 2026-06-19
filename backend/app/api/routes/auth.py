@@ -39,6 +39,15 @@ class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str
 
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+    role: str
+    refresh_token: str | None = None
+
+class RefreshRequest(BaseModel):
+    refresh_token: str | None = None
+
 def validate_password_policy(password: str):
     if len(password) < 8:
         raise HTTPException(status_code=422, detail="Password must be at least 8 characters")
@@ -96,22 +105,27 @@ def login(
         key="refresh_token",
         value=raw_refresh,
         httponly=True,
-        secure=True, # Ensure HTTPS in prod
+        secure=settings.ENV == "production", # Ensure HTTPS in prod
         samesite="lax",
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
         path="/api/auth"
     )
-    return {"access_token": access_token, "token_type": "bearer", "role": recruiter.role}
+    logger.error(f"[DEBUG-AUTH] Login Success: access_token generated. secure_flag={settings.ENV == 'production'}, ENV={settings.ENV}, cookie_path=/api/auth")
+    return {"access_token": access_token, "token_type": "bearer", "role": recruiter.role, "refresh_token": raw_refresh}
 
 
 @router.post("/auth/refresh")
 def refresh_token(
     request: Request,
     response: Response,
-    refresh_token: str = Cookie(None),
+    body: RefreshRequest | None = None,
+    cookie_refresh_token: str = Cookie(None, alias="refresh_token"),
     db: Session = Depends(get_db)
 ):
+    refresh_token = (body and body.refresh_token) or cookie_refresh_token
+    logger.error(f"[DEBUG-AUTH] /auth/refresh called. Cookie/Body token received: {'YES' if refresh_token else 'NO'}")
     if not refresh_token:
+        logger.error("[DEBUG-AUTH] Missing refresh token. Raising 401.")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing refresh token")
         
     token_hash = hash_refresh_token(refresh_token)
@@ -129,7 +143,7 @@ def refresh_token(
         
     # Rotate token
     rt.revoked = True
-    new_raw, new_hashed = generate_refresh_token()
+    new_raw_refresh, new_hashed = generate_refresh_token()
     
     new_rt = RefreshToken(
         user_id=user.id,
@@ -139,19 +153,19 @@ def refresh_token(
     db.add(new_rt)
     db.commit()
     
-    access_token = create_access_token(data={"sub": user.email, "role": user.role.value})
+    new_access_token = create_access_token(data={"sub": user.email, "role": user.role.value})
     
     response.set_cookie(
         key="refresh_token",
-        value=new_raw,
+        value=new_raw_refresh,
         httponly=True,
-        secure=True,
+        secure=settings.ENV == "production",
         samesite="lax",
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
         path="/api/auth"
     )
     
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": new_access_token, "token_type": "bearer", "role": user.role.value, "refresh_token": new_raw_refresh}
 
 
 @router.post("/auth/logout")
