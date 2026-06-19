@@ -1,7 +1,16 @@
 import type { EnhancedSession } from '../../pages/SessionsPage';
 
+export interface AdminStats {
+    totalRecruiters: number;
+    activeUsers: number;
+    disabledUsers: number;
+    auditLogs: number;
+}
+
 interface DashboardStatsProps {
     sessions: EnhancedSession[];
+    role?: string | null;
+    adminStats?: AdminStats | null;
 }
 
 interface StatConfig {
@@ -11,13 +20,13 @@ interface StatConfig {
     colorClass: string;
 }
 
-export function DashboardStats({ sessions }: DashboardStatsProps) {
+export function DashboardStats({ sessions, role, adminStats }: DashboardStatsProps) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const stats: StatConfig[] = [
+    const baseStats: StatConfig[] = [
         {
             label: 'Total Sessions',
             value: sessions.length,
@@ -65,6 +74,38 @@ export function DashboardStats({ sessions }: DashboardStatsProps) {
             colorClass: 'stat-card__icon--noshow',
         },
     ];
+
+    let stats = [...baseStats];
+
+    if (role === 'ADMIN' && adminStats) {
+        stats = [
+            {
+                label: 'Total Recruiters',
+                value: adminStats.totalRecruiters,
+                icon: 'group',
+                colorClass: 'stat-card__icon--total',
+            },
+            {
+                label: 'Active Users',
+                value: adminStats.activeUsers,
+                icon: 'verified_user',
+                colorClass: 'stat-card__icon--active',
+            },
+            {
+                label: 'Disabled Users',
+                value: adminStats.disabledUsers,
+                icon: 'person_off',
+                colorClass: 'stat-card__icon--cancelled',
+            },
+            {
+                label: 'Audit Events',
+                value: adminStats.auditLogs,
+                icon: 'list_alt',
+                colorClass: 'stat-card__icon--completed',
+            },
+            ...stats
+        ];
+    }
 
     return (
         <div className="stats-row" role="status" aria-label="Session statistics summary">
