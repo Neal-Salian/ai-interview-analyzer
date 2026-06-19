@@ -1,10 +1,11 @@
 import { createContext, useContext, useState, type ReactNode, useEffect } from 'react'
 import { jwtDecode } from 'jwt-decode'
+import client from '../api/client'
 
 interface AuthContextType {
     token: string | null
     role: string | null
-    login: (token: string) => void
+    login: (token: string, refreshToken?: string) => void
     logout: () => void
     isAuthenticated: boolean
 }
@@ -39,14 +40,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     }, [token])
 
-    const login = (newToken: string) => {
+    const login = (newToken: string, refreshToken?: string) => {
         localStorage.setItem('token', newToken)
+        if (refreshToken) {
+            localStorage.setItem('refresh_token', refreshToken)
+        }
         setToken(newToken)
     }
 
-    const logout = () => {
-        localStorage.removeItem('token')
-        setToken(null)
+    const logout = async () => {
+        try {
+            await client.post('/auth/logout')
+        } catch (err) {
+            console.error('Logout request failed', err)
+        } finally {
+            localStorage.removeItem('token')
+            localStorage.removeItem('refresh_token')
+            setToken(null)
+            setRole(null)
+        }
     }
 
     return (
