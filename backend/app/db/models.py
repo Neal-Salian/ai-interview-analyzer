@@ -28,6 +28,8 @@ class Job(Base):
     raw_description = Column(Text)
     extracted_skills = Column(JSON)
     seniority_level = Column(String)
+    interview_type = Column(String, nullable=True)
+    is_archived = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     
     recruiter = relationship("Recruiter", foreign_keys=[recruiter_id])
