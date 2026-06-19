@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 
 export default function Navbar() {
-    const { logout } = useAuth()
+    const { logout, role } = useAuth()
     const { theme, toggleTheme } = useTheme()
     const navigate = useNavigate()
 
@@ -59,6 +59,88 @@ export default function Navbar() {
                     <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>history</span>
                     History
                 </button>
+                {role === 'ADMIN' && (
+                    <>
+                        <button
+                            onClick={() => navigate('/admin/users')}
+                            style={{
+                                background: 'transparent',
+                                color: 'var(--text-secondary)',
+                                border: '1px solid var(--border)',
+                                borderRadius: 'var(--radius)',
+                                padding: '6px 14px',
+                                fontSize: '13px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                transition: 'all 0.2s ease',
+                            }}
+                            onMouseEnter={e => {
+                                e.currentTarget.style.borderColor = 'var(--accent)';
+                                e.currentTarget.style.color = 'var(--text-primary)';
+                            }}
+                            onMouseLeave={e => {
+                                e.currentTarget.style.borderColor = 'var(--border)';
+                                e.currentTarget.style.color = 'var(--text-secondary)';
+                            }}
+                        >
+                            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>group</span>
+                            Users
+                        </button>
+                        <button
+                            onClick={() => navigate('/admin/audit-logs')}
+                            style={{
+                                background: 'transparent',
+                                color: 'var(--text-secondary)',
+                                border: '1px solid var(--border)',
+                                borderRadius: 'var(--radius)',
+                                padding: '6px 14px',
+                                fontSize: '13px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                transition: 'all 0.2s ease',
+                            }}
+                            onMouseEnter={e => {
+                                e.currentTarget.style.borderColor = 'var(--accent)';
+                                e.currentTarget.style.color = 'var(--text-primary)';
+                            }}
+                            onMouseLeave={e => {
+                                e.currentTarget.style.borderColor = 'var(--border)';
+                                e.currentTarget.style.color = 'var(--text-secondary)';
+                            }}
+                        >
+                            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>list_alt</span>
+                            Audit Logs
+                        </button>
+                        <button
+                            onClick={() => navigate('/admin/settings')}
+                            style={{
+                                background: 'transparent',
+                                color: 'var(--text-secondary)',
+                                border: '1px solid var(--border)',
+                                borderRadius: 'var(--radius)',
+                                padding: '6px 14px',
+                                fontSize: '13px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                transition: 'all 0.2s ease',
+                            }}
+                            onMouseEnter={e => {
+                                e.currentTarget.style.borderColor = 'var(--accent)';
+                                e.currentTarget.style.color = 'var(--text-primary)';
+                            }}
+                            onMouseLeave={e => {
+                                e.currentTarget.style.borderColor = 'var(--border)';
+                                e.currentTarget.style.color = 'var(--text-secondary)';
+                            }}
+                        >
+                            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>settings</span>
+                            Settings
+                        </button>
+                    </>
+                )}
                 <button
                     onClick={() => navigate('/candidates/new')}
                     style={{
@@ -74,6 +156,21 @@ export default function Navbar() {
                 >
                     + New Candidate
                 </button>
+                <div style={{
+                    background: 'var(--bg-surface-high)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '12px',
+                    padding: '4px 10px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    letterSpacing: '0.05em',
+                    color: role === 'ADMIN' ? 'var(--accent)' : 'var(--text-secondary)',
+                    textTransform: 'uppercase',
+                    display: 'flex',
+                    alignItems: 'center',
+                }}>
+                    {role || 'RECRUITER'}
+                </div>
                 <button
                     onClick={handleLogout}
                     style={{
