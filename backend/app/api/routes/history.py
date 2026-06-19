@@ -67,7 +67,7 @@ def get_interview_history(
             joinedload(InterviewSession.job),
         )
         .filter(
-            InterviewSession.status.in_(["completed", "processing"]),
+            InterviewSession.status.in_(["completed", "processing", "cancelled", "no_show"]),
             (InterviewSession.recruiter_id == current_user.id)
             | (InterviewSession.recruiter_id.is_(None)),
         )
