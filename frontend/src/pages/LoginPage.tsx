@@ -33,7 +33,7 @@ export default function LoginPage() {
             const res = await client.post('/auth/login', params, {
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
             })
-            login(res.data.access_token)
+            login(res.data.access_token, res.data.refresh_token)
             navigate('/sessions')
         } catch (err: any) {
             setError(err.response?.data?.detail || 'Login failed. Please try again.')
