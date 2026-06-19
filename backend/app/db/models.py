@@ -4,26 +4,39 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from .database import Base
 import uuid
 import datetime
+import enum
+from sqlalchemy import Enum as SQLEnum
 
 
 class Candidate(Base):
     __tablename__ = "candidates"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    recruiter_id = Column(UUID(as_uuid=True), ForeignKey("recruiters.id", ondelete="CASCADE"), nullable=True, index=True)
     name = Column(String, nullable=False)
     email = Column(String, unique=True, nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    recruiter = relationship("Recruiter", foreign_keys=[recruiter_id])
     sessions = relationship("Session", back_populates="candidate")
 
 
 class Job(Base):
     __tablename__ = "jobs"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    recruiter_id = Column(UUID(as_uuid=True), ForeignKey("recruiters.id", ondelete="CASCADE"), nullable=True, index=True)
     title = Column(String, nullable=False)
     raw_description = Column(Text)
     extracted_skills = Column(JSON)
     seniority_level = Column(String)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    recruiter = relationship("Recruiter", foreign_keys=[recruiter_id])
     sessions = relationship("Session", back_populates="job")
+
+
+class UserRole(str, enum.Enum):
+    ADMIN = "ADMIN"
+    RECRUITER = "RECRUITER"
 
 
 class Recruiter(Base):
@@ -32,10 +45,39 @@ class Recruiter(Base):
     email = Column(String, unique=True, nullable=False, index=True)
     hashed_password = Column(String, nullable=False)
     full_name = Column(String, nullable=True)
+    role = Column(SQLEnum(UserRole), nullable=False, default=UserRole.RECRUITER)
+    is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     reset_token = Column(String, nullable=True)
     reset_token_expiry = Column(DateTime, nullable=True)
     sessions = relationship("Session", back_populates="recruiter")
+    refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
+    audit_logs = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")
+
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("recruiters.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash = Column(String, nullable=False, unique=True, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    revoked = Column(Boolean, default=False)
+    
+    user = relationship("Recruiter", back_populates="refresh_tokens")
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("recruiters.id", ondelete="SET NULL"), nullable=True, index=True)
+    action = Column(String, nullable=False, index=True)
+    target_id = Column(String, nullable=True)
+    ip_address = Column(String, nullable=True)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    metadata_info = Column(JSONB, nullable=True)
+
+    user = relationship("Recruiter", back_populates="audit_logs")
 
 
 class Session(Base):
