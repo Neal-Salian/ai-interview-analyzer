@@ -40,11 +40,16 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="AI Interview Analyzer", lifespan=lifespan)
 
+from app.core.rate_limit import limiter, RateLimitExceeded, _rate_limit_exceeded_handler
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_credentials=True,  # Important for cookies
 )
 
 app.include_router(zoom_webhook.router, prefix="/api")
@@ -58,6 +63,9 @@ app.include_router(reports.router, prefix="/api")
 app.include_router(panel.router, prefix="/api")
 app.include_router(evaluations.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
+
+from app.api.routes import admin
+app.include_router(admin.router, prefix="/api")
 
 
 @app.get("/health")
