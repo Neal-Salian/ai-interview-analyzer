@@ -12,6 +12,10 @@ import RegisterPage from './pages/RegisterPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 
+import UsersPage from './pages/admin/UsersPage'
+import AuditLogsPage from './pages/admin/AuditLogsPage'
+import SettingsPage from './pages/admin/SettingsPage'
+
 // Inside <Routes> after /login:
 
 
@@ -41,6 +45,17 @@ export default function App() {
             } />
             <Route path="/history" element={
               <ProtectedRoute><InterviewHistoryPage /></ProtectedRoute>
+            } />
+            
+            {/* Admin Only Protected */}
+            <Route path="/admin/users" element={
+              <ProtectedRoute allowedRoles={['ADMIN']}><UsersPage /></ProtectedRoute>
+            } />
+            <Route path="/admin/audit-logs" element={
+              <ProtectedRoute allowedRoles={['ADMIN']}><AuditLogsPage /></ProtectedRoute>
+            } />
+            <Route path="/admin/settings" element={
+              <ProtectedRoute allowedRoles={['ADMIN']}><SettingsPage /></ProtectedRoute>
             } />
 
             {/* Default redirect */}
