@@ -17,6 +17,7 @@ export interface EnhancedSession {
     session_id: string;
     candidate: string | null;
     job: string | null;
+    job_id?: string | null;
     scheduled_at: string | null;
     status: 'active' | 'completed' | 'scheduled' | 'processing' | 'cancelled' | 'no_show';
     metrics?: { sentiment: number; talkCandidate: number; talkInterviewer: number };
@@ -36,9 +37,11 @@ export default function SessionsPage() {
     
     // UI states
     const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
+    const [filterJob, setFilterJob] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedSession, setSelectedSession] = useState<EnhancedSession | null>(null);
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+    const [jobs, setJobs] = useState<{ id: string, title: string }[]>([]);
 
     const navigate = useNavigate();
     const { theme } = useTheme();
@@ -77,8 +80,18 @@ export default function SessionsPage() {
         }
     };
 
+    const fetchJobs = async () => {
+        try {
+            const res = await client.get('/jobs');
+            setJobs(res.data);
+        } catch (err) {
+            console.error('Failed to fetch jobs', err);
+        }
+    };
+
     useEffect(() => {
         fetchSessions();
+        fetchJobs();
         if (role === 'ADMIN') {
             fetchAdminStats();
         }
@@ -140,6 +153,11 @@ export default function SessionsPage() {
     const filteredSessions = useMemo(() => {
         let result = sessions;
 
+        // Apply job filter
+        if (filterJob !== 'all') {
+            result = result.filter(s => s.job_id === filterJob);
+        }
+
         // Apply status filter
         if (filterStatus !== 'all') {
             result = result.filter(s => s.status === filterStatus);
@@ -156,12 +174,17 @@ export default function SessionsPage() {
         }
 
         return result;
-    }, [sessions, filterStatus, searchQuery]);
+    }, [sessions, filterStatus, filterJob, searchQuery]);
 
     // Filter counts
     const filterCounts = useMemo(() => {
+        let baseSessions = sessions;
+        if (filterJob !== 'all') {
+            baseSessions = baseSessions.filter(s => s.job_id === filterJob);
+        }
+
         const searchFiltered = searchQuery.trim()
-            ? sessions.filter(s => {
+            ? baseSessions.filter(s => {
                 const query = searchQuery.toLowerCase().trim();
                 return (
                     (s.candidate && s.candidate.toLowerCase().includes(query)) ||
@@ -169,7 +192,7 @@ export default function SessionsPage() {
                     s.status.toLowerCase().includes(query)
                 );
             })
-            : sessions;
+            : baseSessions;
 
         return {
             all: searchFiltered.length,
@@ -180,7 +203,7 @@ export default function SessionsPage() {
             cancelled: searchFiltered.filter(s => s.status === 'cancelled').length,
             no_show: searchFiltered.filter(s => s.status === 'no_show').length,
         };
-    }, [sessions, searchQuery]);
+    }, [sessions, filterJob, searchQuery]);
 
     const currentDate = new Date().toLocaleDateString('en-US', {
         weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
@@ -188,6 +211,7 @@ export default function SessionsPage() {
 
     const handleClearFilters = () => {
         setFilterStatus('all');
+        setFilterJob('all');
         setSearchQuery('');
     };
 
@@ -249,6 +273,25 @@ export default function SessionsPage() {
                     {/* Search & Filters Row */}
                     <div className="search-filters-row">
                         <SearchBar value={searchQuery} onChange={setSearchQuery} />
+                        
+                        <div className="job-filter">
+                            <select 
+                                className="job-filter-select"
+                                value={filterJob}
+                                onChange={e => setFilterJob(e.target.value)}
+                                aria-label="Filter sessions by job"
+                            >
+                                <option value="all">All Jobs</option>
+                                {jobs.length === 0 ? (
+                                    <option disabled>No jobs available</option>
+                                ) : (
+                                    jobs.map(job => (
+                                        <option key={job.id} value={job.id}>{job.title}</option>
+                                    ))
+                                )}
+                            </select>
+                        </div>
+
                         <div className="filter-pills" role="tablist" aria-label="Filter sessions by status">
                             {filters.map((f) => (
                                 <button
