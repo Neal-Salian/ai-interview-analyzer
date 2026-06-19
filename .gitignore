@@ -15,3 +15,5 @@ dist/
 .DS_Store
 Thumbs.db
 backend.log
+frontend/test_browser*.cjs
+test_auth.py
