@@ -49,6 +49,7 @@ def todays_sessions(
             "session_id": str(s.id),
             "candidate": s.candidate.name if s.candidate else None,
             "job": s.job.title if s.job else None,
+            "job_id": str(s.job_id) if s.job_id else None,
             "scheduled_at": s.scheduled_at,
             "status": get_status(s),
         }
