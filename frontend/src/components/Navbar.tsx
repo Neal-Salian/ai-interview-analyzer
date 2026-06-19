@@ -59,6 +59,33 @@ export default function Navbar() {
                     <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>history</span>
                     History
                 </button>
+                <button
+                    onClick={() => navigate('/jobs')}
+                    style={{
+                        background: 'transparent',
+                        color: 'var(--text-secondary)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 'var(--radius)',
+                        padding: '6px 14px',
+                        fontSize: '13px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        transition: 'all 0.2s ease',
+                    }}
+                    onMouseEnter={e => {
+                        e.currentTarget.style.borderColor = 'var(--accent)';
+                        e.currentTarget.style.color = 'var(--text-primary)';
+                    }}
+                    onMouseLeave={e => {
+                        e.currentTarget.style.borderColor = 'var(--border)';
+                        e.currentTarget.style.color = 'var(--text-secondary)';
+                    }}
+                    aria-label="Jobs"
+                >
+                    <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>work</span>
+                    Jobs
+                </button>
                 {role === 'ADMIN' && (
                     <>
                         <button

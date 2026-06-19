@@ -12,7 +12,6 @@ interface User {
 }
 
 export default function UsersPage() {
-    const { theme } = useTheme();
     const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
