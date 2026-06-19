@@ -11,6 +11,8 @@ import { ThemeProvider } from './context/ThemeContext';
 import RegisterPage from './pages/RegisterPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
+import JobsPage from './pages/JobsPage'
+import JobDetailsPage from './pages/JobDetailsPage'
 
 import UsersPage from './pages/admin/UsersPage'
 import AuditLogsPage from './pages/admin/AuditLogsPage'
@@ -45,6 +47,12 @@ export default function App() {
             } />
             <Route path="/history" element={
               <ProtectedRoute><InterviewHistoryPage /></ProtectedRoute>
+            } />
+            <Route path="/jobs" element={
+              <ProtectedRoute><JobsPage /></ProtectedRoute>
+            } />
+            <Route path="/jobs/:id" element={
+              <ProtectedRoute><JobDetailsPage /></ProtectedRoute>
             } />
             
             {/* Admin Only Protected */}
