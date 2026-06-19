@@ -19,9 +19,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (token) {
             try {
                 const decoded: any = jwtDecode(token)
+
+                // Check if token is expired
+                if (decoded.exp && decoded.exp * 1000 < Date.now()) {
+                    logout()
+                    return
+                }
+
+                // Set role and other attributes if needed
                 setRole(decoded.role || null)
-            } catch {
-                setRole(null)
+                // Note: is_active is checked on the backend during token generation and refresh.
+                // We assume if the token is valid, the user is active, but we can also add it to the JWT if needed.
+            } catch (error) {
+                console.error("Failed to decode token:", error)
+                logout()
             }
         } else {
             setRole(null)
