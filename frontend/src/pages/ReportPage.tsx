@@ -67,7 +67,13 @@ export default function ReportPage() {
             client.get(`/analysis/${sessionId}`),
             new Promise(resolve => setTimeout(resolve, 500))
         ])
-            .then(([res]) => setAnalysis(res.data))
+            .then(([res]) => {
+                if (res.data.status !== 'completed') {
+                    setError('Report is only available for completed sessions.')
+                    return
+                }
+                setAnalysis(res.data)
+            })
             .catch(err => {
                 console.error('Failed to load analysis', err)
                 setError('Could not load analysis data.')

@@ -1,366 +1,442 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
-import client from '../api/client'
+import client from '../api/client';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import PageTransition from '../components/PageTransition';
-import { SessionCardSkeleton } from '../components/Skeleton';// Extended session type for the new UI data requirements
-interface EnhancedSession {
-    session_id: string
-    candidate: string | null
-    job: string | null
-    scheduled_at: string | null
-    status: 'active' | 'completed' | 'scheduled'
-    metrics?: { sentiment: number; talkCandidate: number; talkInterviewer: number }
-    tags?: string[]
+import { SessionCardSkeleton, StatCardSkeleton } from '../components/Skeleton';
+import { SessionCard } from '../components/Sessions/SessionCard';
+import { SessionDetailsDrawer } from '../components/Sessions/SessionDetailsDrawer';
+import { DashboardStats, type AdminStats } from '../components/Sessions/DashboardStats';
+import { SearchBar } from '../components/Sessions/SearchBar';
+import { EmptyState } from '../components/Sessions/EmptyState';
+import './SessionsPage.css';
+
+export interface EnhancedSession {
+    session_id: string;
+    candidate: string | null;
+    job: string | null;
+    job_id?: string | null;
+    scheduled_at: string | null;
+    status: 'active' | 'completed' | 'scheduled' | 'processing' | 'cancelled' | 'no_show';
+    metrics?: { sentiment: number; talkCandidate: number; talkInterviewer: number };
+    tags?: string[];
 }
 
+type FilterStatus = 'all' | 'scheduled' | 'active' | 'processing' | 'completed' | 'cancelled' | 'no_show';
+
 export default function SessionsPage() {
-    const [showNewSession, setShowNewSession] = useState(false)
-    const [candidates, setCandidates] = useState<{ id: string, name: string }[]>([])
-    const [selectedCandidate, setSelectedCandidate] = useState('')
-    const [creating, setCreating] = useState(false)
+    const [showNewSession, setShowNewSession] = useState(false);
+    const [candidates, setCandidates] = useState<{ id: string, name: string }[]>([]);
+    const [selectedCandidate, setSelectedCandidate] = useState('');
+    const [creating, setCreating] = useState(false);
     const [sessions, setSessions] = useState<EnhancedSession[]>([]);
-    const [scheduledAt, setScheduledAt] = useState('')
+    const [scheduledAt, setScheduledAt] = useState('');
     const [loading, setLoading] = useState(true);
+    
+    // UI states
+    const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
+    const [filterJob, setFilterJob] = useState<string>('all');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [selectedSession, setSelectedSession] = useState<EnhancedSession | null>(null);
+    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+    const [jobs, setJobs] = useState<{ id: string, title: string }[]>([]);
+
     const navigate = useNavigate();
     const { theme } = useTheme();
+    const { role } = useAuth();
+    const [adminStats, setAdminStats] = useState<AdminStats | null>(null);
+
+    const fetchSessions = async () => {
+        try {
+            const [res] = await Promise.all([
+                client.get('/sessions/today'),
+                new Promise(resolve => setTimeout(resolve, 500))
+            ]);
+            setSessions(res.data);
+        } catch (err) {
+            console.error('Failed to fetch sessions', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchAdminStats = async () => {
+        try {
+            const [usersRes, logsRes] = await Promise.all([
+                client.get('/admin/users'),
+                client.get('/admin/audit-logs').catch(() => ({ data: [] }))
+            ]);
+            const users = usersRes.data;
+            setAdminStats({
+                totalRecruiters: users.filter((u: any) => u.role === 'RECRUITER').length,
+                activeUsers: users.filter((u: any) => u.is_active).length,
+                disabledUsers: users.filter((u: any) => !u.is_active).length,
+                auditLogs: logsRes.data.length
+            });
+        } catch (err) {
+            console.error('Failed to fetch admin stats', err);
+        }
+    };
+
+    const fetchJobs = async () => {
+        try {
+            const res = await client.get('/jobs');
+            setJobs(res.data);
+        } catch (err) {
+            console.error('Failed to fetch jobs', err);
+        }
+    };
 
     useEffect(() => {
-        const fetchSessions = async () => {
-            try {
-                // Enforce a minimum 800ms loading time so the skeleton animation can be seen
-                const [res] = await Promise.all([
-                    client.get('/sessions/today'),
-                    new Promise(resolve => setTimeout(resolve, 500))
-                ])
-                setSessions(res.data)
-            } catch (err) {
-                console.error('Failed to fetch sessions', err)
-            } finally {
-                setLoading(false)
-            }
+        fetchSessions();
+        fetchJobs();
+        if (role === 'ADMIN') {
+            fetchAdminStats();
         }
-        fetchSessions()
-    }, [])
+    }, [role]);
+
     const fetchCandidates = async () => {
         try {
-            const res = await client.get('/candidates')
-            setCandidates(res.data)
+            const res = await client.get('/candidates');
+            setCandidates(res.data);
         } catch (err) {
-            console.error('Failed to fetch candidates', err)
+            console.error('Failed to fetch candidates', err);
         }
-    }
+    };
 
     const handleNewSession = async () => {
-        if (!selectedCandidate) return
-        setCreating(true)
+        if (!selectedCandidate) return;
+        setCreating(true);
         try {
             await client.post('/sessions', {
                 candidate_id: selectedCandidate,
                 scheduled_at: scheduledAt || new Date().toISOString()
-            })
-            setShowNewSession(false)
-            setSelectedCandidate('')
-            const res = await client.get('/sessions/today')
-            setSessions(res.data)
+            });
+            setShowNewSession(false);
+            setSelectedCandidate('');
+            setScheduledAt('');
+            await fetchSessions();
         } catch (err) {
-            console.error('Failed to create session', err)
+            console.error('Failed to create session', err);
         } finally {
-            setCreating(false)
+            setCreating(false);
         }
-    }
+    };
+
+    const handleStartSession = async (sessionId: string) => {
+        await client.patch(`/sessions/${sessionId}/start`);
+        await fetchSessions();
+        if (selectedSession?.session_id === sessionId) setIsDrawerOpen(false);
+    };
+
+    const handleEndSession = async (sessionId: string) => {
+        await client.patch(`/sessions/${sessionId}/end`);
+        await fetchSessions();
+        if (selectedSession?.session_id === sessionId) setIsDrawerOpen(false);
+    };
+
+    const handleCancelSession = async (sessionId: string) => {
+        await client.patch(`/sessions/${sessionId}/cancel`);
+        await fetchSessions();
+        if (selectedSession?.session_id === sessionId) setIsDrawerOpen(false);
+    };
+
+    const handleNoShowSession = async (sessionId: string) => {
+        await client.patch(`/sessions/${sessionId}/no_show`);
+        await fetchSessions();
+        if (selectedSession?.session_id === sessionId) setIsDrawerOpen(false);
+    };
+
+    // Combined filter + search logic
+    const filteredSessions = useMemo(() => {
+        let result = sessions;
+
+        // Apply job filter
+        if (filterJob !== 'all') {
+            result = result.filter(s => s.job_id === filterJob);
+        }
+
+        // Apply status filter
+        if (filterStatus !== 'all') {
+            result = result.filter(s => s.status === filterStatus);
+        }
+
+        // Apply search filter
+        if (searchQuery.trim()) {
+            const query = searchQuery.toLowerCase().trim();
+            result = result.filter(s =>
+                (s.candidate && s.candidate.toLowerCase().includes(query)) ||
+                (s.job && s.job.toLowerCase().includes(query)) ||
+                s.status.toLowerCase().includes(query)
+            );
+        }
+
+        return result;
+    }, [sessions, filterStatus, filterJob, searchQuery]);
+
+    // Filter counts
+    const filterCounts = useMemo(() => {
+        let baseSessions = sessions;
+        if (filterJob !== 'all') {
+            baseSessions = baseSessions.filter(s => s.job_id === filterJob);
+        }
+
+        const searchFiltered = searchQuery.trim()
+            ? baseSessions.filter(s => {
+                const query = searchQuery.toLowerCase().trim();
+                return (
+                    (s.candidate && s.candidate.toLowerCase().includes(query)) ||
+                    (s.job && s.job.toLowerCase().includes(query)) ||
+                    s.status.toLowerCase().includes(query)
+                );
+            })
+            : baseSessions;
+
+        return {
+            all: searchFiltered.length,
+            scheduled: searchFiltered.filter(s => s.status === 'scheduled').length,
+            active: searchFiltered.filter(s => s.status === 'active').length,
+            processing: searchFiltered.filter(s => s.status === 'processing').length,
+            completed: searchFiltered.filter(s => s.status === 'completed').length,
+            cancelled: searchFiltered.filter(s => s.status === 'cancelled').length,
+            no_show: searchFiltered.filter(s => s.status === 'no_show').length,
+        };
+    }, [sessions, filterJob, searchQuery]);
 
     const currentDate = new Date().toLocaleDateString('en-US', {
         weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
     });
 
+    const handleClearFilters = () => {
+        setFilterStatus('all');
+        setFilterJob('all');
+        setSearchQuery('');
+    };
+
+    const handleOpenCreateSession = () => {
+        fetchCandidates();
+        setShowNewSession(true);
+    };
+
+    const filters: { label: string; value: FilterStatus }[] = [
+        { label: 'All', value: 'all' },
+        { label: 'Scheduled', value: 'scheduled' },
+        { label: 'Active', value: 'active' },
+        { label: 'Processing', value: 'processing' },
+        { label: 'Completed', value: 'completed' },
+        { label: 'Cancelled', value: 'cancelled' },
+        { label: 'No-Shows', value: 'no_show' },
+    ];
+
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: 'var(--bg)', color: 'var(--text-primary)' }}>
+        <div className="sessions-page">
             <Navbar />
 
             <PageTransition>
-                <main style={{ padding: '2rem', maxWidth: '1600px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+                <main className="sessions-main">
 
-                {/* Page Header */}
-                <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'flex-end',
-                    borderBottom: '1px solid var(--border)',
-                    paddingBottom: '1.5rem',
-                    marginBottom: '2rem'
-                }}>
-                    <div>
-                        <h1 style={{ fontSize: '28px', fontWeight: 600, margin: '0 0 0.5rem 0', letterSpacing: '-0.02em' }}>
-                            Today's Interviews
-                        </h1>
-                        <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '14px' }}>
-                            {currentDate}
-                        </p>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                        <button style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            width: '40px', height: '40px', borderRadius: 'var(--radius-sm, 6px)',
-                            border: '1px solid var(--border)', backgroundColor: 'transparent',
-                            color: 'var(--text-secondary)', cursor: 'pointer'
-                        }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>refresh</span>
-                        </button>
-
-                        <button
-                            onClick={() => {
-                                fetchCandidates()
-                                setShowNewSession(true)
-                            }}
-                            style={{
-                                display: 'flex', alignItems: 'center', gap: '0.5rem',
-                                backgroundColor: 'var(--accent)', backgroundImage: 'var(--accent-gradient)', boxShadow: 'var(--accent-glow)', color: '#ffffff',
-                                border: 'none', padding: '0 1rem', height: '40px',
-                                borderRadius: 'var(--radius-sm, 6px)', fontWeight: 500,
-                                fontSize: '13px', cursor: 'pointer'
-                            }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add</span>
-                            New Session
-                        </button>
-                    </div>
-                </div>
-
-                {loading ? (
-                    <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))',
-                        gap: '1.5rem'
-                    }}>
-                        {[1, 2, 3].map((i) => (
-                            <SessionCardSkeleton key={i} />
-                        ))}
-                    </div>
-                ) : (
-                    /* Grid Layout */
-                    <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))',
-                        gap: '1.5rem'
-                    }}>
-
-                        {/* Render Active/Completed Sessions */}
-                        {sessions.map((session) => (
-                            <div key={session.session_id} style={{
-                                backgroundColor: 'var(--bg-surface)',
-                                borderRadius: '10px',
-                                border: '1px solid var(--border)',
-                                boxShadow: 'var(--shadow-card)',
-                                padding: '1.5rem',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '1.25rem',
-                                opacity: session.status === 'completed' ? 0.8 : 1,
-                                transition: 'opacity 0.2s, var(--theme-transition)'
-                            }}
-                                onMouseEnter={e => e.currentTarget.style.opacity = '1'}
-                                onMouseLeave={e => e.currentTarget.style.opacity = session.status === 'completed' ? '0.8' : '1'}
-                            >
-                                {/* Card Header */}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                    <div>
-                                        <h2 style={{ fontSize: '18px', fontWeight: 600, margin: '0 0 0.5rem 0' }}>{session.candidate}</h2>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '6px' }}>
-                                            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>work</span>
-                                            {session.job}
-                                        </div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                                            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>schedule</span>
-                                            {session.scheduled_at}
-                                        </div>
-                                    </div>
-
-                                    {/* Status Badge */}
-                                    {session.status === 'active' ? (
-                                        <div style={{
-                                            display: 'flex', alignItems: 'center', gap: '6px',
-                                            backgroundColor: 'rgba(255, 184, 106, 0.1)', // Warning/Tertiary tint
-                                            border: '1px solid rgba(255, 184, 106, 0.3)',
-                                            padding: '4px 12px', borderRadius: '999px'
-                                        }}>
-                                            <div style={{ width: '6px', height: '6px', backgroundColor: 'var(--red)', borderRadius: '50%' }} />
-                                            <span style={{ color: 'var(--red)', fontSize: '11px', fontWeight: 700, letterSpacing: '0.05em' }}>LIVE</span>
-                                        </div>
-                                    ) : (
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
-                                            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>check_circle</span>
-                                            <span style={{ fontSize: '12px', fontWeight: 500 }}>Completed</span>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Active Session Metrics (Bento Box) */}
-                                {session.status === 'active' && session.metrics && (
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: 'auto' }}>
-                                        <div style={{ backgroundColor: 'var(--bg)', borderRadius: '6px', padding: '10px' }}>
-                                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '12px' }}>Sentiment Focus</div>
-                                            <div style={{ width: '100%', height: '6px', backgroundColor: 'var(--border)', borderRadius: '3px', overflow: 'hidden' }}>
-                                                <div style={{ width: `${session.metrics.sentiment}%`, height: '100%', backgroundColor: 'var(--accent)' }} />
-                                            </div>
-                                        </div>
-                                        <div style={{ backgroundColor: 'var(--bg)', borderRadius: '6px', padding: '10px', display: 'flex', flexDirection: 'column' }}>
-                                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: 'auto' }}>Talk Ratio</div>
-                                            <div style={{ fontSize: '14px', fontWeight: 600 }}>
-                                                {session.metrics.talkCandidate}% <span style={{ color: 'var(--text-secondary)', fontWeight: 400, fontSize: '12px' }}>/ {session.metrics.talkInterviewer}%</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Action Buttons */}
-                                <div style={{ marginTop: 'auto', paddingTop: '1.25rem', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    {session.status === 'active' ? (
-                                        <button
-                                            onClick={() => navigate(`/sessions/${session.session_id}/live`)}
-                                            style={{
-                                                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
-                                                backgroundColor: 'var(--accent)', backgroundImage: 'var(--accent-gradient)', boxShadow: 'var(--accent-glow)', color: '#fff', border: 'none', padding: '0.75rem',
-                                                borderRadius: '6px', fontWeight: 500, cursor: 'pointer', fontSize: '13px'
-                                            }}
-                                        >
-                                            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>login</span>
-                                            Join Session
-                                        </button>
-                                    ) : (
-                                        <>
-                                            <div style={{ display: 'flex', gap: '6px' }}>
-                                                {session.tags?.map((tag, idx) => (
-                                                    <span key={idx} style={{
-                                                        backgroundColor: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-secondary)',
-                                                        padding: '2px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: 600
-                                                    }}>
-                                                        {tag}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                            <button
-                                                onClick={() => navigate(`/sessions/${session.session_id}/report`)}
-                                                style={{
-                                                    display: 'flex', alignItems: 'center', gap: '0.5rem',
-                                                    backgroundColor: 'transparent', color: 'var(--text-secondary)',
-                                                    border: '1px solid var(--border)', padding: '0.5rem 1rem',
-                                                    borderRadius: '6px', fontWeight: 500, cursor: 'pointer', fontSize: '12px'
-                                                }}
-                                            >
-                                                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>assessment</span>
-                                                View Report
-                                            </button>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
-
-                        {/* Dashed Schedule Clear Card */}
-                        <div style={{
-                            backgroundColor: 'transparent',
-                            borderRadius: '10px',
-                            border: '1px dashed var(--border)',
-                            padding: '2rem',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            textAlign: 'center',
-                            minHeight: '260px'
-                        }}>
-                            <div style={{
-                                width: '48px', height: '48px', backgroundColor: 'var(--bg-surface)',
-                                borderRadius: '8px', display: 'flex', alignItems: 'center',
-                                justifyContent: 'center', marginBottom: '1rem', border: '1px solid var(--border)'
-                            }}>
-                                <span className="material-symbols-outlined" style={{ color: 'var(--text-secondary)', fontSize: '24px' }}>event_available</span>
-                            </div>
-                            <h3 style={{ fontSize: '16px', fontWeight: 500, margin: '0 0 6px 0', color: 'var(--text-primary)' }}>Schedule Clear</h3>
-                            <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '13px', maxWidth: '200px', lineHeight: '1.5' }}>
-                                No further interviews scheduled for this afternoon.
+                    {/* Page Header */}
+                    <div className="sessions-header">
+                        <div>
+                            <h1 className="sessions-header__title">
+                                Today's Interviews
+                            </h1>
+                            <p className="sessions-header__date">
+                                {currentDate}
                             </p>
                         </div>
+
+                        <div className="sessions-header__actions">
+                            <button
+                                className="btn-icon"
+                                onClick={fetchSessions}
+                                aria-label="Refresh sessions"
+                            >
+                                <span className="material-symbols-outlined" style={{ fontSize: '20px' }} aria-hidden="true">refresh</span>
+                            </button>
+                        </div>
                     </div>
-                )}
-            </main>
+
+                    {/* Dashboard Statistics */}
+                    {loading ? (
+                        <div className="stats-row" aria-label="Loading statistics">
+                            {[1, 2, 3, 4, 5].map((i) => (
+                                <StatCardSkeleton key={i} />
+                            ))}
+                        </div>
+                    ) : (
+                        <DashboardStats sessions={sessions} role={role} adminStats={adminStats} />
+                    )}
+
+                    {/* Search & Filters Row */}
+                    <div className="search-filters-row">
+                        <SearchBar value={searchQuery} onChange={setSearchQuery} />
+                        
+                        <div className="job-filter">
+                            <select 
+                                className="job-filter-select"
+                                value={filterJob}
+                                onChange={e => setFilterJob(e.target.value)}
+                                aria-label="Filter sessions by job"
+                            >
+                                <option value="all">All Jobs</option>
+                                {jobs.length === 0 ? (
+                                    <option disabled>No jobs available</option>
+                                ) : (
+                                    jobs.map(job => (
+                                        <option key={job.id} value={job.id}>{job.title}</option>
+                                    ))
+                                )}
+                            </select>
+                        </div>
+
+                        <div className="filter-pills" role="tablist" aria-label="Filter sessions by status">
+                            {filters.map((f) => (
+                                <button
+                                    key={f.value}
+                                    className={`filter-pill ${filterStatus === f.value ? 'filter-pill--active' : ''}`}
+                                    onClick={() => setFilterStatus(f.value)}
+                                    role="tab"
+                                    aria-selected={filterStatus === f.value}
+                                    aria-label={`${f.label}: ${filterCounts[f.value]} sessions`}
+                                >
+                                    {f.label}
+                                    <span className="filter-pill__count">
+                                        {filterCounts[f.value]}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Session Grid or Empty State */}
+                    {loading ? (
+                        <div className="session-grid">
+                            {[1, 2, 3].map((i) => (
+                                <SessionCardSkeleton key={i} />
+                            ))}
+                        </div>
+                    ) : filteredSessions.length === 0 && sessions.length > 0 ? (
+                        <EmptyState
+                            hasActiveFilter={filterStatus !== 'all'}
+                            hasSearchQuery={searchQuery.trim().length > 0}
+                            onClearFilters={handleClearFilters}
+                            onCreateSession={handleOpenCreateSession}
+                        />
+                    ) : filteredSessions.length === 0 && sessions.length === 0 ? (
+                        <EmptyState
+                            hasActiveFilter={false}
+                            hasSearchQuery={false}
+                            onClearFilters={handleClearFilters}
+                            onCreateSession={handleOpenCreateSession}
+                        />
+                    ) : (
+                        <div className="session-grid">
+                            {/* Create New Session Card */}
+                            <div
+                                className="create-session-card"
+                                onClick={handleOpenCreateSession}
+                                role="button"
+                                tabIndex={0}
+                                aria-label="Create a new interview session"
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpenCreateSession(); } }}
+                            >
+                                <div className="create-session-card__icon-wrap">
+                                    <span className="material-symbols-outlined" style={{ color: 'var(--accent)', fontSize: '26px' }} aria-hidden="true">add</span>
+                                </div>
+                                <h3 className="create-session-card__title">Create New Session</h3>
+                                <p className="create-session-card__desc">
+                                    Schedule a new interview for a candidate.
+                                </p>
+                            </div>
+
+                            {/* Session Cards */}
+                            {filteredSessions.map((session) => (
+                                <SessionCard
+                                    key={session.session_id}
+                                    session={session}
+                                    onClick={() => { setSelectedSession(session); setIsDrawerOpen(true); }}
+                                    onStart={() => handleStartSession(session.session_id)}
+                                    onEnd={() => handleEndSession(session.session_id)}
+                                    onJoin={() => navigate(`/sessions/${session.session_id}/live`)}
+                                    onViewReport={() => navigate(`/sessions/${session.session_id}/report`)}
+                                />
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Future Extensions Slot */}
+                    <section
+                        id="dashboard-extensions"
+                        className="dashboard-extensions"
+                        aria-label="Future dashboard modules"
+                    />
+
+                </main>
             </PageTransition>
+
+            <SessionDetailsDrawer
+                session={selectedSession}
+                isOpen={isDrawerOpen}
+                onClose={() => { setIsDrawerOpen(false); setTimeout(() => setSelectedSession(null), 300); }}
+                onStart={() => { if(selectedSession) handleStartSession(selectedSession.session_id); }}
+                onEnd={() => { if(selectedSession) handleEndSession(selectedSession.session_id); }}
+                onJoin={() => { if(selectedSession) navigate(`/sessions/${selectedSession.session_id}/live`); }}
+                onViewReport={() => { if(selectedSession) navigate(`/sessions/${selectedSession.session_id}/report`); }}
+                onCancel={() => { if(selectedSession) handleCancelSession(selectedSession.session_id); }}
+                onNoShow={() => { if(selectedSession) handleNoShowSession(selectedSession.session_id); }}
+            />
+
             {showNewSession && (
-                <div style={{
-                    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    zIndex: 200
-                }}>
-                    <div style={{
-                        background: 'var(--bg-surface)', border: '1px solid var(--border)',
-                        borderRadius: '10px', padding: '32px', width: '400px'
-                    }}>
-                        <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '24px' }}>
+                <div className="modal-backdrop" onClick={() => { setShowNewSession(false); setSelectedCandidate(''); setScheduledAt(''); }}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                        <h2 className="modal-title">
                             New Session
                         </h2>
-                        <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>
+                        <label className="modal-label" htmlFor="session-candidate-select">
                             Select Candidate
                         </label>
                         <select
+                            id="session-candidate-select"
                             value={selectedCandidate}
                             onChange={e => setSelectedCandidate(e.target.value)}
-                            style={{
-                                width: '100%', background: 'var(--bg)',
-                                border: '1px solid var(--border)', borderRadius: '6px',
-                                padding: '10px', color: 'var(--text-primary)',
-                                fontSize: '14px', marginBottom: '24px'
-                            }}
+                            className="modal-input"
+                            aria-label="Select a candidate for the session"
                         >
                             <option value="">Choose a candidate...</option>
                             {candidates.map(c => (
                                 <option key={c.id} value={c.id}>{c.name}</option>
                             ))}
                         </select>
-                        <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>
+                        <label className="modal-label" htmlFor="session-schedule-input">
                             Schedule Date & Time
                         </label>
                         <input
+                            id="session-schedule-input"
                             type="datetime-local"
                             value={scheduledAt}
                             onChange={e => setScheduledAt(e.target.value)}
-                            style={{
-                                width: '100%',
-                                background: 'var(--bg)',
-                                border: '1px solid var(--border)',
-                                borderRadius: '6px',
-                                padding: '10px',
-                                color: 'var(--text-primary)',
-                                fontSize: '14px',
-                                marginBottom: '24px',
-                                colorScheme: theme
-                            }}
+                            className="modal-input"
+                            style={{ colorScheme: theme }}
+                            aria-label="Schedule date and time"
                         />
-                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                        <div className="modal-actions">
                             <button
+                                className="modal-btn--cancel"
                                 onClick={() => {
-                                    setShowNewSession(false)
-                                    setSelectedCandidate('')
-                                    setScheduledAt('')
-                                }}
-                                style={{
-                                    background: 'var(--bg)', border: '1px solid var(--border)',
-                                    borderRadius: '6px', padding: '8px 16px',
-                                    color: 'var(--text-secondary)', cursor: 'pointer'
+                                    setShowNewSession(false);
+                                    setSelectedCandidate('');
+                                    setScheduledAt('');
                                 }}
                             >
                                 Cancel
                             </button>
                             <button
+                                className="modal-btn--create"
                                 onClick={handleNewSession}
                                 disabled={!selectedCandidate || creating}
-                                style={{
-                                    background: 'var(--accent)', backgroundImage: 'var(--accent-gradient)', boxShadow: 'var(--accent-glow)', border: 'none',
-                                    borderRadius: '6px', padding: '8px 16px',
-                                    color: '#fff', cursor: 'pointer', fontWeight: 600,
-                                    opacity: !selectedCandidate || creating ? 0.5 : 1
-                                }}
                             >
                                 {creating ? 'Creating...' : 'Create Session'}
                             </button>

@@ -29,18 +29,22 @@ class MetricResult:
     Standardized result that every metric must return from compute().
 
     Fields:
-        name:         Human-readable metric name (e.g. "Confidence")
-        score:        0–100 integer score
-        level:        Human-readable level (e.g. "Strong")
-        confidence:   0.0–1.0 float indicating assessment reliability
-        evidence:     List of supporting evidence dicts
-        explanation:  Human-readable explanation of the score
-        signals_used: List of signal names that contributed to the score
+        name:                Human-readable metric name (e.g. "Confidence")
+        score:               0–100 integer score (confidence-weighted)
+        raw_score:           0–100 integer score (unweighted average, for auditing)
+        level:               Human-readable level (e.g. "Strong")
+        confidence:          0.0–1.0 float indicating assessment reliability
+        confidence_details:  Per-signal breakdown: [{signal, score, confidence, weight_applied}]
+        evidence:            List of supporting evidence dicts
+        explanation:         Human-readable explanation of the score
+        signals_used:        List of signal names that contributed to the score
     """
     name: str
     score: int
     level: str
     confidence: float
+    raw_score: int = 0
+    confidence_details: list[dict] = field(default_factory=list)
     evidence: list[dict] = field(default_factory=list)
     explanation: str = ""
     signals_used: list[str] = field(default_factory=list)
@@ -49,8 +53,10 @@ class MetricResult:
         return {
             "name": self.name,
             "score": self.score,
+            "raw_score": self.raw_score,
             "level": self.level,
             "confidence": round(self.confidence, 3),
+            "confidence_details": self.confidence_details,
             "evidence": self.evidence,
             "explanation": self.explanation,
             "signals_used": self.signals_used,

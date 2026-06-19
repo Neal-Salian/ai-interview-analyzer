@@ -1,8 +1,14 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+
+logger = logging.getLogger(__name__)
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import zoom_webhook, jobs, sessions, questions, auth, candidates, analysis, reports
+from sqlalchemy.orm import Session
+from app.db.database import get_db
+from app.api.deps import get_current_user, verify_development_env
+from app.api.routes import zoom_webhook, jobs, sessions, questions, auth, candidates, analysis, reports, panel, evaluations, history
 from app.api.websocket import connect_recruiter, disconnect_recruiter
 from app.db.crud import get_active_sessions, get_session_history, get_questions_for_session
 from app.ml.stream.rtmp_consumer import consume_stream
@@ -14,31 +20,36 @@ async def lifespan(app: FastAPI):
         for session in active:
             if session.zoom_meeting_id:
                 rtmp_url = f"rtmp://localhost:1935/stream/{session.zoom_meeting_id}"
-                print(f"[STARTUP] Recovering consumer for session {session.id}")
+                logger.info(f"[STARTUP] Recovering consumer for session {session.id}")
                 asyncio.create_task(consume_stream(str(session.id), rtmp_url))
-        print(f"[STARTUP] Recovery check done — {len(active)} active session(s) found")
+        logger.info(f"[STARTUP] Recovery check done — {len(active)} active session(s) found")
     except Exception as e:
         # DB might not be ready yet — log and continue, don't crash the server
-        print(f"[STARTUP] Could not check active sessions (DB unavailable?): {e}")
+        logger.exception(f"[STARTUP] Could not check active sessions (DB unavailable?): {e}")
 
     # Discover and register all metric plugins (Phase 10)
     try:
         from app.ml.analysis.registry import discover_metrics
         discover_metrics()
-        print("[STARTUP] Metric plugins discovered")
+        logger.info("[STARTUP] Metric plugins discovered")
     except Exception as e:
-        print(f"[STARTUP] Metric discovery failed (non-fatal): {e}")
+        logger.exception(f"[STARTUP] Metric discovery failed (non-fatal): {e}")
 
     yield
 
 
 app = FastAPI(title="AI Interview Analyzer", lifespan=lifespan)
 
+from app.core.rate_limit import limiter, RateLimitExceeded, _rate_limit_exceeded_handler
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_credentials=True,  # Important for cookies
 )
 
 app.include_router(zoom_webhook.router, prefix="/api")
@@ -49,6 +60,12 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(candidates.router, prefix="/api")
 app.include_router(analysis.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
+app.include_router(panel.router, prefix="/api")
+app.include_router(evaluations.router, prefix="/api")
+app.include_router(history.router, prefix="/api")
+
+from app.api.routes import admin
+app.include_router(admin.router, prefix="/api")
 
 
 @app.get("/health")
@@ -57,7 +74,25 @@ def health():
 
 
 @app.websocket("/ws/live/{session_id}")
-async def websocket_endpoint(websocket: WebSocket, session_id: str):
+async def websocket_endpoint(
+    websocket: WebSocket, 
+    session_id: str,
+    token: str = Query(None),
+    db: Session = Depends(get_db)
+):
+    await websocket.accept()
+
+    if not token:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    try:
+        get_current_user(token=token, db=db)
+    except Exception:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    # Note: connect_recruiter no longer calls accept() since we accepted above
     await connect_recruiter(session_id, websocket)
     try:
         try:
@@ -70,10 +105,10 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     "transcripts": history["transcripts"],
                     "questions": questions_history
                 })
-                print(f"[WS] Replayed {len(history['emotions'])} emotions, "
-                      f"{len(history['transcripts'])} transcripts to session {session_id}")
+                logger.info(f"[WS] Replayed {len(history['emotions'])} emotions, "
+                            f"{len(history['transcripts'])} transcripts to session {session_id}")
         except Exception as e:
-            print(f"[WS] History fetch failed for {session_id}: {e}")
+            logger.exception(f"[WS] History fetch failed for {session_id}: {e}")
             # Don't close — keep connection open for live updates
 
         while True:
@@ -85,14 +120,17 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
     except WebSocketDisconnect:
         disconnect_recruiter(session_id)
     except Exception as e:
-        print(f"[WS] Unexpected error for {session_id}: {e}")
+        logger.exception(f"[WS] Unexpected error for {session_id}: {e}")
         disconnect_recruiter(session_id)
 
 
 
 # Internal test endpoint — broadcasts a fake emotion to a session
 # Only used for testing WebSocket broadcast, remove before production
-@app.post("/internal/test-broadcast/{session_id}")
+@app.post(
+    "/internal/test-broadcast/{session_id}",
+    dependencies=[Depends(verify_development_env)]
+)
 async def test_broadcast(session_id: str):
     from app.api.websocket import broadcast
     await broadcast(session_id, {

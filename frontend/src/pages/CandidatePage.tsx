@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import client from '../api/client'
@@ -8,12 +8,20 @@ export default function CandidatePage() {
     const [name, setName] = useState('')
     const [email, setEmail] = useState('')
     const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle')
+    const [jobs, setJobs] = useState<any[]>([])
+    const [jobId, setJobId] = useState('')
     const navigate = useNavigate()
+
+    useEffect(() => {
+        client.get('/jobs')
+            .then(res => setJobs(res.data))
+            .catch(console.error)
+    }, [])
 
     const handleSubmit = async () => {
         if (!name || !email) return
         try {
-            await client.post('/candidates', { name, email })
+            await client.post('/candidates', { name, email, job_id: jobId || null })
             setStatus('success')
             setTimeout(() => navigate('/sessions'), 1500)
         } catch (err: any) {
@@ -61,6 +69,19 @@ export default function CandidatePage() {
                                 placeholder="priya@example.com"
                                 style={inputStyle}
                             />
+                        </div>
+                        <div>
+                            <label style={labelStyle}>Assign to Job (Optional)</label>
+                            <select
+                                value={jobId}
+                                onChange={e => setJobId(e.target.value)}
+                                style={inputStyle}
+                            >
+                                <option value="">-- No Job Selected --</option>
+                                {jobs.map(job => (
+                                    <option key={job.id} value={job.id}>{job.title}</option>
+                                ))}
+                            </select>
                         </div>
 
                         {status === 'success' && (

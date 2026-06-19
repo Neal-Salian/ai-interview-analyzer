@@ -52,10 +52,10 @@ async def generate_explanation(prompt: str) -> str:
         logger.warning("[EXPLAIN] Ollama request timed out")
         return "Explanation service timed out. Please try again."
     except httpx.ConnectError:
-        logger.error("[EXPLAIN] Cannot connect to Ollama — is it running on port 11434?")
+        logger.exception("[EXPLAIN] Cannot connect to Ollama — is it running on port 11434?")
         return "Explanation service is not available. Ensure the local AI model is running."
     except Exception as e:
-        logger.error(f"[EXPLAIN] Request failed: {e}")
+        logger.exception(f"[EXPLAIN] Request failed: {e}")
         return f"Explanation service error: {str(e)}"
 
     # Parse the Ollama response envelope

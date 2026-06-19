@@ -49,7 +49,7 @@ def build_explanation_context(
     # Get overview of all metrics for general questions
     all_metrics = get_all_metrics_summary(session_summary)
     metrics_overview = "\n".join(
-        f"- {m['name']}: {m['score']}/100 ({m['level']})"
+        f"- {m['name']}: {m['score']}/100 ({m['level']}) [confidence: {round(m.get('confidence', 0) * 100)}%]"
         for m in all_metrics
     )
 
@@ -62,18 +62,36 @@ def build_explanation_context(
             if quote:
                 evidence_text += f'- "{quote}" (source: {source})\n'
 
+        # Build confidence context
+        confidence_level = matched_metric.get("confidence_level", "unknown")
+        confidence_pct = round(matched_metric.get("confidence", 0) * 100)
+        confidence_note = f"This metric has {confidence_level.upper()} confidence ({confidence_pct}%)."
+
+        # Confidence details
+        conf_details = matched_metric.get("confidence_details", [])
+        confidence_breakdown = ""
+        if conf_details:
+            confidence_breakdown = "\nSIGNAL CONFIDENCE BREAKDOWN:\n"
+            for cd in conf_details:
+                confidence_breakdown += (
+                    f"- {cd.get('signal', '?')}: score={cd.get('score', 0)}, "
+                    f"confidence={round(cd.get('confidence', 0) * 100)}%, "
+                    f"weight={round(cd.get('weight_applied', 0) * 100)}%\n"
+                )
+
         prompt = f"""You are an AI interview analysis assistant. A recruiter is asking about a candidate's interview performance.
 
 METRIC: {matched_metric['metric'].get('name', 'Unknown')}
 SCORE: {matched_metric['score']}/100
 LEVEL: {matched_metric['level']}
+CONFIDENCE: {confidence_note}
 EXPLANATION: {matched_metric['explanation']}
 
 EVIDENCE (these are the ONLY observations you may reference):
 {evidence_text if evidence_text else '- No specific evidence quotes available'}
 
 SIGNALS USED: {', '.join(matched_metric['signals_used']) if matched_metric['signals_used'] else 'N/A'}
-
+{confidence_breakdown}
 {f'TRANSCRIPT EXCERPT: {transcript_excerpt[:500]}' if transcript_excerpt else ''}
 
 RECRUITER QUESTION: {question}
@@ -82,6 +100,7 @@ RULES:
 - Answer ONLY based on the evidence and signals listed above.
 - Do NOT invent or hallucinate any quotes, behaviors, or observations.
 - If the evidence does not support a clear answer, say so honestly.
+- If confidence is LOW, explicitly mention that the assessment has limited data support.
 - Be concise and professional.
 - Respond in 2-4 sentences.
 

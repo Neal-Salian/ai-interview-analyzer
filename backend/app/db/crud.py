@@ -217,7 +217,7 @@ def mark_session_completed(db: DBSession, session_id: str) -> InterviewSession |
     if not session:
         return None
 
-    session.status = "completed"
+    session.status = "processing"
     session.ended_at = datetime.datetime.utcnow()
     db.commit()
     db.refresh(session)
@@ -243,6 +243,7 @@ def write_session_summary(
         return None
 
     session.session_summary = summary
+    session.status = "completed"
     db.commit()
     db.refresh(session)
     return session
@@ -316,5 +317,100 @@ def mark_question_asked(question_id: str) -> bool:
         q.was_asked = True
         db.commit()
         return True
+    finally:
+        db.close()
+
+
+# ── Evaluations and Feedback ──────────────────────────────────────────────────
+
+def save_evaluation_result(
+    session_id: str,
+    category: str,
+    rule_score: float,
+    llm_score: float,
+    combined_score: float,
+    strengths: list,
+    improvement_areas: list,
+    overall_assessment: str,
+    correct_concepts: list,
+    missing_concepts: list,
+    potential_inaccuracies: list,
+    confidence_level: str,
+    evidence: list
+):
+    db = SessionLocal()
+    try:
+        from app.db.models import EvaluationResult
+        result = EvaluationResult(
+            id=uuid.uuid4(),
+            session_id=session_id,
+            category=category,
+            rule_score=rule_score,
+            llm_score=llm_score,
+            combined_score=combined_score,
+            strengths=strengths,
+            improvement_areas=improvement_areas,
+            overall_assessment=overall_assessment,
+            correct_concepts=correct_concepts,
+            missing_concepts=missing_concepts,
+            potential_inaccuracies=potential_inaccuracies,
+            confidence_level=confidence_level,
+            evidence=evidence,
+            timestamp=datetime.datetime.utcnow()
+        )
+        db.add(result)
+        db.commit()
+    finally:
+        db.close()
+
+
+def get_evaluations_for_session(session_id: str) -> list:
+    db = SessionLocal()
+    try:
+        from app.db.models import EvaluationResult
+        return (
+            db.query(EvaluationResult)
+            .filter(EvaluationResult.session_id == session_id)
+            .order_by(EvaluationResult.timestamp.asc())
+            .all()
+        )
+    finally:
+        db.close()
+
+
+def save_evaluation_feedback(
+    session_id: str,
+    recruiter_id: str,
+    evaluation_category: str,
+    decision: str,
+    correction_notes: str
+):
+    db = SessionLocal()
+    try:
+        from app.db.models import EvaluationFeedback
+        feedback = EvaluationFeedback(
+            id=uuid.uuid4(),
+            session_id=session_id,
+            recruiter_id=recruiter_id,
+            evaluation_category=evaluation_category,
+            decision=decision,
+            correction_notes=correction_notes,
+            timestamp=datetime.datetime.utcnow()
+        )
+        db.add(feedback)
+        db.commit()
+    finally:
+        db.close()
+
+
+def get_evaluation_feedbacks_by_category(category: str) -> list:
+    db = SessionLocal()
+    try:
+        from app.db.models import EvaluationFeedback
+        return (
+            db.query(EvaluationFeedback)
+            .filter(EvaluationFeedback.evaluation_category == category)
+            .all()
+        )
     finally:
         db.close()

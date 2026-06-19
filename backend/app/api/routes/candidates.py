@@ -4,10 +4,11 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from typing import Optional
 
 from app.db.database import get_db
-from app.db.models import Candidate
-from app.api.deps import get_current_user
+from app.db.models import Candidate, UserRole, Session as InterviewSession
+from app.api.deps import get_current_user, require_recruiter
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -16,39 +17,73 @@ logger = logging.getLogger(__name__)
 class CandidateCreate(BaseModel):
     name: str
     email: str
+    job_id: Optional[str] = None
 
 
 @router.post("/candidates")
 def create_candidate(
     payload: CandidateCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user)
+    current_user=Depends(require_recruiter)
 ):
     existing = db.query(Candidate).filter(
         Candidate.email == payload.email
     ).first()
+    
+    # Ideally, email shouldn't be globally unique if they can belong to different recruiters,
+    # but let's keep it if it's already unique in the db to avoid constraint errors for now.
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
 
     candidate = Candidate(
         id=uuid.uuid4(),
+        recruiter_id=current_user.id,
         name=payload.name,
         email=payload.email,
         created_at=datetime.datetime.utcnow()
     )
     db.add(candidate)
+
+    # Auto-create draft session
+    session_id = uuid.uuid4()
+    job_uuid = None
+    if payload.job_id:
+        try:
+            job_uuid = uuid.UUID(payload.job_id)
+        except ValueError:
+            pass
+
+    draft_session = InterviewSession(
+        id=session_id,
+        candidate_id=candidate.id,
+        job_id=job_uuid,
+        recruiter_id=current_user.id,
+        status="draft",
+        scheduled_at=None,
+        started_at=None
+    )
+    db.add(draft_session)
+
     db.commit()
     db.refresh(candidate)
-    logger.info(f"[candidates] created {candidate.email}")
-    return {"candidate_id": str(candidate.id), "name": candidate.name}
+    logger.info(f"[candidates] created {candidate.email} by recruiter {current_user.id} and draft session {session_id}")
+    return {
+        "candidate_id": str(candidate.id),
+        "name": candidate.name,
+        "session_id": str(session_id)
+    }
 
 
 @router.get("/candidates")
 def list_candidates(
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user)
+    current_user=Depends(require_recruiter)
 ):
-    candidates = db.query(Candidate).order_by(Candidate.created_at.desc()).all()
+    query = db.query(Candidate)
+    if current_user.role != UserRole.ADMIN:
+        query = query.filter(Candidate.recruiter_id == current_user.id)
+        
+    candidates = query.order_by(Candidate.created_at.desc()).all()
     return [
         {
             "id": str(c.id),

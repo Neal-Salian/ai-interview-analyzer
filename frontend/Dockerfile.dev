@@ -1,0 +1,18 @@
+# ── Frontend Development Dockerfile ──────────────────────────────────────────
+# Runs Vite dev server with HMR — no production build, no Nginx.
+# Source code is mounted via volumes, so changes hot-reload instantly.
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install dependencies first (cached layer)
+COPY package*.json ./
+RUN npm ci
+
+# Source code is volume-mounted at runtime — no COPY . . needed
+# This means node_modules lives inside the container (from npm ci above)
+# while your local source files are mounted over /app at runtime.
+
+EXPOSE 5173
+
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

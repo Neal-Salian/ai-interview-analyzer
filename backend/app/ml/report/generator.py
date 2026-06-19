@@ -29,6 +29,7 @@ def generate_report(session_id: str, db: DBSession) -> dict:
         EmotionFrame,
         TranscriptChunk,
         SuggestedQuestion,
+        EvaluationResult,
     )
 
     # ── Load session ─────────────────────────────────────────────────────
@@ -63,6 +64,8 @@ def generate_report(session_id: str, db: DBSession) -> dict:
 
     summary = session.session_summary or {}
     metrics = summary.get("metrics", [])
+    overall_confidence = summary.get("overall_confidence", 0.0)
+    data_quality = summary.get("data_quality", {})
     full_text = " ".join(t.text for t in transcripts if t.text)
 
     # Duration
@@ -108,6 +111,33 @@ def generate_report(session_id: str, db: DBSession) -> dict:
     except Exception:
         pass
 
+    # Evaluations
+    evaluations = []
+    try:
+        eval_records = (
+            db.query(EvaluationResult)
+            .filter(EvaluationResult.session_id == session_id)
+            .order_by(EvaluationResult.timestamp.asc())
+            .all()
+        )
+        evaluations = [
+            {
+                "category": e.category,
+                "combined_score": e.combined_score,
+                "strengths": e.strengths or [],
+                "improvement_areas": e.improvement_areas or [],
+                "overall_assessment": e.overall_assessment,
+                "correct_concepts": e.correct_concepts or [],
+                "missing_concepts": e.missing_concepts or [],
+                "potential_inaccuracies": e.potential_inaccuracies or [],
+                "confidence_level": e.confidence_level,
+                "evidence": e.evidence or [],
+            }
+            for e in eval_records
+        ]
+    except Exception as e:
+        logger.warning(f"[REPORT] Evaluation query failed: {e}")
+
     # NLP scores
     big_five = {}
     overall_sentiment = {}
@@ -147,6 +177,8 @@ def generate_report(session_id: str, db: DBSession) -> dict:
             "overall_sentiment": overall_sentiment.get("label", "N/A"),
             "metrics_computed": len(metrics),
             "integrity_alerts": len(integrity_events),
+            "overall_confidence": overall_confidence,
+            "data_quality": data_quality.get("signals_quality", "unknown"),
         },
 
         # Section 2: Interview Overview
@@ -173,6 +205,7 @@ def generate_report(session_id: str, db: DBSession) -> dict:
         "behavioral_insights": {
             "metrics": metrics,
             "total_metrics": len(metrics),
+            "overall_confidence": overall_confidence,
         },
 
         # Section 5: Attention Indicators
@@ -212,7 +245,10 @@ def generate_report(session_id: str, db: DBSession) -> dict:
                 {
                     "name": m.get("name"),
                     "score": m.get("score"),
+                    "raw_score": m.get("raw_score", m.get("score")),
                     "level": m.get("level"),
+                    "confidence": m.get("confidence", 0.0),
+                    "confidence_details": m.get("confidence_details", []),
                     "evidence": m.get("evidence", []),
                     "explanation": m.get("explanation", ""),
                 }
@@ -234,4 +270,7 @@ def generate_report(session_id: str, db: DBSession) -> dict:
                 for q in questions
             ],
         },
+
+        # Section 12: Knowledge Assessment (Domain-Aware Evaluation)
+        "knowledge_assessment": evaluations,
     }

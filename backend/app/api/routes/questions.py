@@ -16,7 +16,7 @@ def get_questions(
         questions = get_questions_for_session(session_id)
         return questions
     except Exception as e:
-        logger.error(f"[questions] failed to fetch for session {session_id}: {e}")
+        logger.exception(f"[questions] failed to fetch for session {session_id}: {e}")
         raise HTTPException(status_code=500, detail="failed to fetch questions")
 
 

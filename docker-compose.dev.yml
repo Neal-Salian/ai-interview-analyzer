@@ -1,0 +1,35 @@
+# ── Development Overrides ────────────────────────────────────────────────────
+# Usage:  docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+# This file overrides ONLY the frontend service for development.
+# All other services (db, backend, nginx-rtmp) run unchanged from the base file.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: interview_frontend_dev
+    restart: unless-stopped
+    ports: !override
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=/api
+      # Enable polling for file watching on macOS Docker Desktop
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+    volumes:
+      # Mount source code for hot reload
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/index.html:/app/index.html
+      - ./frontend/vite.config.ts:/app/vite.config.ts
+      - ./frontend/tsconfig.json:/app/tsconfig.json
+      - ./frontend/tsconfig.app.json:/app/tsconfig.app.json
+      - ./frontend/tsconfig.node.json:/app/tsconfig.node.json
+      - ./frontend/tailwind.config.js:/app/tailwind.config.js
+      # Prevent host node_modules from overriding container's node_modules
+      - /app/node_modules
+    depends_on:
+      - backend

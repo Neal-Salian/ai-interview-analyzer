@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
+    ENV: str = "development"
     DATABASE_URL: str
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
@@ -9,6 +10,15 @@ class Settings(BaseSettings):
     ZOOM_CLIENT_ID: str = ""
     ZOOM_CLIENT_SECRET: str = ""
     ZOOM_WEBHOOK_SECRET: str = ""
+
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""           # Gmail: use an App Password, not your real password
+    EMAIL_FROM_NAME: str = "AI Interview Platform"
+    EMAIL_FROM: str = "" 
+
+    FRONTEND_URL: str = "http://localhost:5173"
 
     class Config:
         env_file = ".env"

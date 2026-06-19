@@ -44,7 +44,7 @@ export default function LiveDashboard() {
     const [currentSentiment, setCurrentSentiment] = useState<string>('—')
     const [integrityAlerts, setIntegrityAlerts] = useState<{event_type: string, severity: string, details: string, timestamp: string}[]>([])
     const [connected, setConnected] = useState(false)
-    const [sessionInfo, setSessionInfo] = useState<{ candidate: string, job: string } | null>(null)
+    const [sessionInfo, setSessionInfo] = useState<{ candidate: string, job: string, status?: string } | null>(null)
     const transcriptRef = useRef<HTMLDivElement>(null)
     const wsRef = useRef<WebSocket | null>(null)
 
@@ -64,10 +64,17 @@ export default function LiveDashboard() {
             client.get(`/sessions/${sessionId}`),
             new Promise(resolve => setTimeout(resolve, 500))
         ])
-            .then(([res]) => setSessionInfo({
-                candidate: res.data.candidate || 'Unknown',
-                job: res.data.job || 'No role specified'
-            }))
+            .then(([res]) => {
+                if (res.data.status === 'completed') {
+                    navigate(`/sessions/${sessionId}/report`, { replace: true })
+                    return
+                }
+                setSessionInfo({
+                    candidate: res.data.candidate || 'Unknown',
+                    job: res.data.job || 'No role specified',
+                    status: res.data.status
+                })
+            })
             .catch(err => console.error('Failed to fetch session info', err))
             .finally(() => setLoading(false))
     }, [sessionId])
@@ -76,7 +83,9 @@ export default function LiveDashboard() {
     useEffect(() => {
         if (!sessionId) return
 
-        const ws = new WebSocket(`ws://localhost:8001/ws/live/${sessionId}`)
+        const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8001'
+        const token = localStorage.getItem('token')
+        const ws = new WebSocket(`${wsUrl}/ws/live/${sessionId}?token=${token}`)
         wsRef.current = ws
 
         ws.onopen = () => setConnected(true)
@@ -223,6 +232,27 @@ export default function LiveDashboard() {
                         </p>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {sessionInfo?.status === 'active' && (
+                            <button
+                                onClick={async () => {
+                                    try {
+                                        await client.patch(`/sessions/${sessionId}/end`)
+                                        navigate('/sessions')
+                                    } catch (e) {
+                                        console.error('Failed to end session', e)
+                                    }
+                                }}
+                                style={{
+                                    marginRight: '12px',
+                                    display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                    backgroundColor: 'transparent', border: '1px solid var(--danger)', color: 'var(--danger)', padding: '0.4rem 0.8rem',
+                                    borderRadius: '6px', fontWeight: 600, cursor: 'pointer', fontSize: '12px'
+                                }}
+                            >
+                                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>stop_circle</span>
+                                End Session
+                            </button>
+                        )}
                         <span style={{
                             width: '8px', height: '8px', borderRadius: '50%',
                             background: connected ? 'var(--success)' : 'var(--danger)',
