@@ -73,7 +73,78 @@ def get_job(
     job = query.first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    return job
+
+    metrics = {
+        "total_candidates": 0,
+        "draft_candidates": 0,
+        "scheduled_interviews": 0,
+        "active_interviews": 0,
+        "completed_interviews": 0,
+        "cancelled_interviews": 0,
+        "no_shows": 0
+    }
+
+    candidates_dict = {}
+    sessions_list = []
+
+    for s in job.sessions:
+        sessions_list.append({
+            "id": str(s.id),
+            "candidate_name": s.candidate.name if s.candidate else None,
+            "candidate_id": str(s.candidate_id) if s.candidate_id else None,
+            "status": s.status,
+            "scheduled_at": s.scheduled_at.isoformat() if s.scheduled_at else None,
+            "interview_type": s.session_summary.get("interview_type") if s.session_summary else None,
+        })
+        
+        if s.status == "draft":
+            metrics["draft_candidates"] += 1
+        elif s.status == "scheduled":
+            metrics["scheduled_interviews"] += 1
+        elif s.status in ["active", "processing"]:
+            metrics["active_interviews"] += 1
+        elif s.status == "completed":
+            metrics["completed_interviews"] += 1
+        elif s.status == "cancelled":
+            metrics["cancelled_interviews"] += 1
+        elif s.status == "no_show":
+            metrics["no_shows"] += 1
+
+        if s.candidate:
+            c = s.candidate
+            if str(c.id) not in candidates_dict:
+                candidates_dict[str(c.id)] = {
+                    "id": str(c.id),
+                    "name": c.name,
+                    "email": c.email,
+                    "status": "Draft",
+                    "created_at": c.created_at.isoformat(),
+                    "sessions_status": []
+                }
+            candidates_dict[str(c.id)]["sessions_status"].append(s.status)
+
+    for c_id, c in candidates_dict.items():
+        s_statuses = c["sessions_status"]
+        if any(st in ["scheduled", "active", "processing"] for st in s_statuses):
+            c["status"] = "Scheduled"
+        elif any(st == "completed" for st in s_statuses):
+            c["status"] = "Completed"
+        del c["sessions_status"]
+        metrics["total_candidates"] += 1
+
+    return {
+        "id": str(job.id),
+        "title": job.title,
+        "raw_description": job.raw_description,
+        "seniority_level": job.seniority_level,
+        "interview_type": job.interview_type,
+        "extracted_skills": job.extracted_skills,
+        "is_archived": job.is_archived,
+        "created_at": job.created_at.isoformat(),
+        "metrics": metrics,
+        "candidates": list(candidates_dict.values()),
+        "sessions": sessions_list
+    }
 
 
 @router.patch("/jobs/{job_id}")
