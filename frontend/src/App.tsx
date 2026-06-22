@@ -13,6 +13,8 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import JobsPage from './pages/JobsPage'
 import JobDetailsPage from './pages/JobDetailsPage'
+import CandidatesPage from './pages/CandidatesPage'
+import CandidateDetailsPage from './pages/CandidateDetailsPage'
 
 import UsersPage from './pages/admin/UsersPage'
 import AuditLogsPage from './pages/admin/AuditLogsPage'
@@ -42,8 +44,14 @@ export default function App() {
             <Route path="/sessions/:id/report" element={
               <ProtectedRoute><ReportPage /></ProtectedRoute>
             } />
+            <Route path="/candidates" element={
+              <ProtectedRoute><CandidatesPage /></ProtectedRoute>
+            } />
             <Route path="/candidates/new" element={
               <ProtectedRoute><CandidatePage /></ProtectedRoute>
+            } />
+            <Route path="/candidates/:id" element={
+              <ProtectedRoute><CandidateDetailsPage /></ProtectedRoute>
             } />
             <Route path="/history" element={
               <ProtectedRoute><InterviewHistoryPage /></ProtectedRoute>
