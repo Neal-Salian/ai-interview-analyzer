@@ -20,7 +20,7 @@ export default function CandidateDetailsPage() {
     const [scheduleForm, setScheduleForm] = useState({ scheduled_at: '', interview_type: '', notes: '' })
     const fileInputRef = useRef<HTMLInputElement>(null)
 
-    const allStatuses = ['Draft', 'Active', 'Scheduled', 'Interviewing', 'Completed', 'Selected', 'Rejected', 'No Show']
+
 
     useEffect(() => {
         fetchCandidate()

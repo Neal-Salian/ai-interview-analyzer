@@ -18,7 +18,7 @@ export interface EnhancedSession {
     job: string | null;
     job_id?: string | null;
     scheduled_at: string | null;
-    status: 'active' | 'completed' | 'scheduled' | 'processing' | 'cancelled' | 'no_show';
+    status: 'active' | 'completed' | 'scheduled' | 'processing' | 'cancelled' | 'no_show' | 'draft';
     metrics?: { sentiment: number; talkCandidate: number; talkInterviewer: number };
     tags?: string[];
 }
