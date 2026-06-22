@@ -22,6 +22,12 @@ class SessionCreate(BaseModel):
     scheduled_at: Optional[str] = None
 
 
+class SessionSchedule(BaseModel):
+    scheduled_at: str
+    interview_type: Optional[str] = None
+    notes: Optional[str] = None
+
+
 @router.get("/sessions/today")
 def todays_sessions(
     db: DBSession = Depends(get_db),
@@ -31,7 +37,8 @@ def todays_sessions(
     sessions = db.query(InterviewSession).filter(
         or_(
             InterviewSession.scheduled_at >= today_start,
-            InterviewSession.started_at >= today_start
+            InterviewSession.started_at >= today_start,
+            InterviewSession.status == "draft"
         ),
         InterviewSession.recruiter_id == current_user.id
     ).all()
@@ -131,6 +138,13 @@ def create_session(
 def get_session(
     session: InterviewSession = Depends(get_owned_session),
 ):
+    # Try to fetch interview_type and notes from session_summary
+    interview_type = None
+    notes = None
+    if session.session_summary:
+        interview_type = session.session_summary.get("interview_type")
+        notes = session.session_summary.get("notes")
+
     return {
         "session_id": str(session.id),
         "candidate": session.candidate.name if session.candidate else None,
@@ -139,6 +153,8 @@ def get_session(
         "scheduled_at": session.scheduled_at,
         "started_at": session.started_at,
         "ended_at": session.ended_at,
+        "interview_type": interview_type,
+        "notes": notes,
     }
 
 
@@ -217,3 +233,85 @@ async def no_show_session(
 
     logger.info(f"[sessions] marked session {session.id} as no-show")
     return {"session_id": str(session.id), "status": session.status}
+
+
+@router.patch("/sessions/{session_id}/schedule")
+async def schedule_session(
+    payload: SessionSchedule,
+    background_tasks: BackgroundTasks,
+    db: DBSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+    session: InterviewSession = Depends(get_owned_session),
+):
+    if session.status != "draft":
+        raise HTTPException(status_code=400, detail="Only draft sessions can be scheduled")
+
+    scheduled_at = datetime.datetime.fromisoformat(payload.scheduled_at)
+    
+    # We allow minor leeway (e.g., 5 minutes) for scheduling if needed, or strict 'in the past' check.
+    if scheduled_at < datetime.datetime.utcnow() - datetime.timedelta(minutes=5):
+        raise HTTPException(status_code=400, detail="Cannot schedule session in the past")
+
+    session.status = "scheduled"
+    session.scheduled_at = scheduled_at
+    
+    # Update summary with interview type and notes
+    # To properly update a JSONB column in SQLAlchemy without JSON functions, we can assign a new dict
+    current_summary = dict(session.session_summary) if session.session_summary else {}
+    if payload.interview_type:
+        current_summary["interview_type"] = payload.interview_type
+    if payload.notes:
+        current_summary["notes"] = payload.notes
+    session.session_summary = current_summary
+        
+    db.commit()
+    db.refresh(session)
+
+    # Fire-and-forget notification emails
+    from app.services.email import send_candidate_invite, send_recruiter_session_confirmation
+
+    candidate = session.candidate
+    job = session.job
+    scheduled_str = session.scheduled_at.strftime("%A %d %B %Y, %H:%M") if session.scheduled_at else "TBD"
+
+    if candidate:
+        background_tasks.add_task(
+            send_candidate_invite,
+            to_email=candidate.email,
+            candidate_name=candidate.name,
+            job_title=job.title if job else None,
+            scheduled_at=scheduled_str,
+        )
+
+        background_tasks.add_task(
+            send_recruiter_session_confirmation,
+            to_email=current_user.email,
+            recruiter_name=current_user.full_name or "Recruiter",
+            candidate_name=candidate.name,
+            job_title=job.title if job else None,
+            scheduled_at=scheduled_str,
+            session_id=str(session.id),
+        )
+
+    logger.info(f"[sessions] scheduled draft session {session.id} for {candidate.name if candidate else 'unknown'}")
+    return {
+        "session_id": str(session.id),
+        "status": session.status,
+        "scheduled_at": session.scheduled_at.isoformat()
+    }
+
+
+@router.delete("/sessions/{session_id}")
+async def delete_session(
+    db: DBSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+    session: InterviewSession = Depends(get_owned_session),
+):
+    if session.status != "draft":
+        raise HTTPException(status_code=400, detail="Only draft sessions can be deleted")
+    
+    db.delete(session)
+    db.commit()
+    
+    logger.info(f"[sessions] deleted draft session {session.id}")
+    return {"status": "deleted"}
