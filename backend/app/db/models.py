@@ -14,6 +14,10 @@ class Candidate(Base):
     recruiter_id = Column(UUID(as_uuid=True), ForeignKey("recruiters.id", ondelete="CASCADE"), nullable=True, index=True)
     name = Column(String, nullable=False)
     email = Column(String, unique=True, nullable=False)
+    phone = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
+    status = Column(String, default="Draft")
+    resume_url = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     
     recruiter = relationship("Recruiter", foreign_keys=[recruiter_id])
