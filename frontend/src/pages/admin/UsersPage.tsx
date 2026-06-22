@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import Navbar from '../../components/Navbar';
 import PageTransition from '../../components/PageTransition';
 import client from '../../api/client';
-import { useTheme } from '../../context/ThemeContext';
+
 
 interface User {
     id: string;
