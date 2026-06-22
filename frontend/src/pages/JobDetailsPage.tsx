@@ -1,16 +1,49 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import client from '../api/client';
 import PageTransition from '../components/PageTransition';
 import type { Job } from './JobsPage';
 import './JobDetailsPage.css';
 
+interface JobMetrics {
+    total_candidates: number;
+    draft_candidates: number;
+    scheduled_interviews: number;
+    active_interviews: number;
+    completed_interviews: number;
+    cancelled_interviews: number;
+    no_shows: number;
+}
+
+interface JobCandidate {
+    id: string;
+    name: string;
+    email: string;
+    status: string;
+    created_at: string;
+}
+
+interface JobSession {
+    id: string;
+    candidate_name: string | null;
+    candidate_id: string | null;
+    status: string;
+    scheduled_at: string | null;
+    interview_type: string | null;
+}
+
+interface JobDetails extends Job {
+    metrics: JobMetrics;
+    candidates: JobCandidate[];
+    sessions: JobSession[];
+}
+
 export default function JobDetailsPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     
-    const [job, setJob] = useState<Job | null>(null);
+    const [job, setJob] = useState<JobDetails | null>(null);
     const [loading, setLoading] = useState(true);
     const [editing, setEditing] = useState(false);
     
@@ -176,6 +209,134 @@ export default function JobDetailsPage() {
                                 </div>
                             ) : (
                                 <p className="job-details-section__text">No skills extracted/provided.</p>
+                            )}
+                        </div>
+
+                        <div className="job-details-section">
+                            <h2 className="job-details-section__title">Job Metrics</h2>
+                            <div className="metrics-grid">
+                                <div className="metric-card">
+                                    <span className="metric-card__label">Total Candidates</span>
+                                    <span className="metric-card__value">{job.metrics.total_candidates}</span>
+                                </div>
+                                <div className="metric-card">
+                                    <span className="metric-card__label">Drafts</span>
+                                    <span className="metric-card__value">{job.metrics.draft_candidates}</span>
+                                </div>
+                                <div className="metric-card">
+                                    <span className="metric-card__label">Scheduled</span>
+                                    <span className="metric-card__value">{job.metrics.scheduled_interviews}</span>
+                                </div>
+                                <div className="metric-card">
+                                    <span className="metric-card__label">Active</span>
+                                    <span className="metric-card__value">{job.metrics.active_interviews}</span>
+                                </div>
+                                <div className="metric-card">
+                                    <span className="metric-card__label">Completed</span>
+                                    <span className="metric-card__value">{job.metrics.completed_interviews}</span>
+                                </div>
+                                <div className="metric-card metric-card--danger">
+                                    <span className="metric-card__label">No Shows / Cancel</span>
+                                    <span className="metric-card__value">{job.metrics.no_shows + job.metrics.cancelled_interviews}</span>
+                                </div>
+                            </div>
+                            
+                            <h3 className="job-details-section__subtitle">Candidate Funnel</h3>
+                            <div className="funnel-container">
+                                <div className="funnel-step">
+                                    <div className="funnel-step__count">{job.metrics.total_candidates}</div>
+                                    <div className="funnel-step__label">Sourced</div>
+                                </div>
+                                <div className="funnel-divider">
+                                    <span className="material-symbols-outlined">chevron_right</span>
+                                </div>
+                                <div className="funnel-step">
+                                    <div className="funnel-step__count">{job.metrics.scheduled_interviews}</div>
+                                    <div className="funnel-step__label">Scheduled</div>
+                                </div>
+                                <div className="funnel-divider">
+                                    <span className="material-symbols-outlined">chevron_right</span>
+                                </div>
+                                <div className="funnel-step">
+                                    <div className="funnel-step__count">{job.metrics.completed_interviews}</div>
+                                    <div className="funnel-step__label">Completed</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="job-details-section">
+                            <div className="job-section-header">
+                                <h2 className="job-details-section__title" style={{ margin: 0 }}>Candidates</h2>
+                                <button className="btn-secondary" title="Import functionality pending" disabled>
+                                    <span className="material-symbols-outlined" style={{ fontSize: '18px', marginRight: '6px' }}>upload</span>
+                                    Import Candidates
+                                </button>
+                            </div>
+                            {job.candidates && job.candidates.length > 0 ? (
+                                <div className="job-table-wrapper">
+                                    <table className="job-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Name</th>
+                                                <th>Email</th>
+                                                <th>Status</th>
+                                                <th>Created</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {job.candidates.map(c => (
+                                                <tr key={c.id}>
+                                                    <td>{c.name}</td>
+                                                    <td>{c.email}</td>
+                                                    <td><span className={`status-badge status-${c.status.toLowerCase()}`}>{c.status}</span></td>
+                                                    <td>{new Date(c.created_at).toLocaleDateString()}</td>
+                                                    <td>
+                                                        <Link to={`/candidates/${c.id}`} className="table-action-link">View</Link>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                <p className="job-details-section__text">No candidates associated with this job yet.</p>
+                            )}
+                        </div>
+
+                        <div className="job-details-section">
+                            <div className="job-section-header">
+                                <h2 className="job-details-section__title" style={{ margin: 0 }}>Sessions</h2>
+                            </div>
+                            {job.sessions && job.sessions.length > 0 ? (
+                                <div className="job-table-wrapper">
+                                    <table className="job-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Candidate</th>
+                                                <th>Status</th>
+                                                <th>Scheduled For</th>
+                                                <th>Type</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {job.sessions.map(s => (
+                                                <tr key={s.id}>
+                                                    <td>{s.candidate_name || 'Unknown'}</td>
+                                                    <td><span className={`status-badge status-${s.status.toLowerCase()}`}>{s.status}</span></td>
+                                                    <td>{s.scheduled_at ? new Date(s.scheduled_at).toLocaleString() : 'TBD'}</td>
+                                                    <td>{s.interview_type || '-'}</td>
+                                                    <td>
+                                                        <Link to={`/sessions`} className="table-action-link">Manage</Link>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                <p className="job-details-section__text">No sessions scheduled for this job yet.</p>
                             )}
                         </div>
                     </div>
