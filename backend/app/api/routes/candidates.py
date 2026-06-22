@@ -106,7 +106,7 @@ def list_candidates(
             "name": c.name,
             "email": c.email,
             "phone": c.phone,
-            "status": c.status,
+            "status": c.status or "Draft",
             "applied_jobs": list(set(applied_jobs)),
             "created_at": c.created_at.isoformat()
         })
@@ -150,7 +150,7 @@ def get_candidate(
         "email": candidate.email,
         "phone": candidate.phone,
         "notes": candidate.notes,
-        "status": candidate.status,
+        "status": candidate.status or "Draft",
         "resume_url": candidate.resume_url,
         "created_at": candidate.created_at.isoformat(),
         "applied_jobs": list(unique_jobs),

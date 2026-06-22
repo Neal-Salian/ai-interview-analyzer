@@ -17,3 +17,4 @@ Thumbs.db
 backend.log
 frontend/test_browser*.cjs
 test_auth.py
+backend/test.db

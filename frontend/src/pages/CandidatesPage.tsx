@@ -35,7 +35,7 @@ export default function CandidatesPage() {
     const filteredCandidates = candidates.filter(c => {
         const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                               c.email.toLowerCase().includes(searchQuery.toLowerCase())
-        const matchesStatus = statusFilter === 'All' || c.status === statusFilter
+        const matchesStatus = statusFilter === 'All' || (c.status || 'Draft') === statusFilter
         
         let matchesJob = true
         if (jobFilter !== 'All') {
@@ -169,7 +169,7 @@ export default function CandidatesPage() {
                                                 {c.phone && <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>{c.phone}</div>}
                                             </td>
                                             <td style={tdStyle}>
-                                                <StatusBadge status={c.status.toLowerCase() as any} />
+                                                <StatusBadge status={(c.status || 'Draft').toLowerCase() as any} />
                                             </td>
                                             <td style={tdStyle}>
                                                 <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
