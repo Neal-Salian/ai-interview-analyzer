@@ -11,16 +11,30 @@ export default function CandidateDetailsPage() {
     const [candidate, setCandidate] = useState<any>(null)
     const [loading, setLoading] = useState(true)
     const [isEditing, setIsEditing] = useState(false)
-    const [editForm, setEditForm] = useState({ name: '', email: '', phone: '', notes: '', status: '' })
+    const [editForm, setEditForm] = useState({ name: '', email: '', phone: '', notes: '' })
     const [saving, setSaving] = useState(false)
     const [uploading, setUploading] = useState(false)
+    const [jobs, setJobs] = useState<any[]>([])
+    const [scheduleModalOpen, setScheduleModalOpen] = useState(false)
+    const [selectedDraftSessionId, setSelectedDraftSessionId] = useState<string | null>(null)
+    const [scheduleForm, setScheduleForm] = useState({ scheduled_at: '', interview_type: '', notes: '' })
     const fileInputRef = useRef<HTMLInputElement>(null)
 
     const allStatuses = ['Draft', 'Active', 'Scheduled', 'Interviewing', 'Completed', 'Selected', 'Rejected', 'No Show']
 
     useEffect(() => {
         fetchCandidate()
+        fetchJobs()
     }, [id])
+
+    const fetchJobs = async () => {
+        try {
+            const res = await client.get('/jobs')
+            setJobs(res.data)
+        } catch (err) {
+            console.error('Failed to load jobs', err)
+        }
+    }
 
     const fetchCandidate = async () => {
         try {
@@ -30,8 +44,7 @@ export default function CandidateDetailsPage() {
                 name: res.data.name || '',
                 email: res.data.email || '',
                 phone: res.data.phone || '',
-                notes: res.data.notes || '',
-                status: res.data.status || 'Draft'
+                notes: res.data.notes || ''
             })
         } catch (err) {
             console.error('Failed to load candidate', err)
@@ -51,6 +64,29 @@ export default function CandidateDetailsPage() {
             alert('Failed to save changes. Email might be in use.')
         } finally {
             setSaving(false)
+        }
+    }
+
+    const handleAssignJob = async (sessionId: string, jobId: string) => {
+        try {
+            await client.patch(`/sessions/${sessionId}/job`, { job_id: jobId })
+            await fetchCandidate()
+        } catch (err) {
+            console.error('Failed to assign job', err)
+            alert('Failed to assign job')
+        }
+    }
+
+    const handleScheduleSubmit = async () => {
+        if (!selectedDraftSessionId) return
+        try {
+            await client.patch(`/sessions/${selectedDraftSessionId}/schedule`, scheduleForm)
+            setScheduleModalOpen(false)
+            setScheduleForm({ scheduled_at: '', interview_type: '', notes: '' })
+            await fetchCandidate()
+        } catch (err) {
+            console.error('Failed to schedule session', err)
+            alert('Failed to schedule session')
         }
     }
 
@@ -146,8 +182,7 @@ export default function CandidateDetailsPage() {
                                             name: candidate.name || '',
                                             email: candidate.email || '',
                                             phone: candidate.phone || '',
-                                            notes: candidate.notes || '',
-                                            status: candidate.status || 'Draft'
+                                            notes: candidate.notes || ''
                                         })
                                     }}
                                     style={{
@@ -201,12 +236,6 @@ export default function CandidateDetailsPage() {
                                         <div>
                                             <label style={labelStyle}>Phone (Optional)</label>
                                             <input value={editForm.phone} onChange={e => setEditForm({...editForm, phone: e.target.value})} style={inputStyle} />
-                                        </div>
-                                        <div>
-                                            <label style={labelStyle}>Status</label>
-                                            <select value={editForm.status} onChange={e => setEditForm({...editForm, status: e.target.value})} style={inputStyle}>
-                                                {allStatuses.map(s => <option key={s} value={s}>{s}</option>)}
-                                            </select>
                                         </div>
                                     </div>
                                 ) : (
@@ -306,14 +335,54 @@ export default function CandidateDetailsPage() {
                                 {candidate.session_history && candidate.session_history.length > 0 ? (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                         {candidate.session_history.map((s: any, i: number) => (
-                                            <div key={i} style={{ padding: '12px', background: 'var(--bg-surface-high)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', cursor: 'pointer' }} onClick={() => navigate(`/sessions`)}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                            <div key={i} style={{ padding: '12px', background: 'var(--bg-surface-high)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                                                     <span style={{ fontSize: '13px', fontWeight: 600 }}>{s.job || 'No Job Assigned'}</span>
                                                     <StatusBadge status={s.status.toLowerCase() as any} />
                                                 </div>
-                                                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
                                                     {s.scheduled_at ? new Date(s.scheduled_at).toLocaleString() : 'Unscheduled'}
                                                 </div>
+                                                
+                                                {s.status === 'draft' && (
+                                                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+                                                        <select 
+                                                            value={s.job_id || ''}
+                                                            onChange={(e) => handleAssignJob(s.session_id, e.target.value)}
+                                                            style={{ ...inputStyle, width: 'auto', padding: '6px 10px', fontSize: '12px' }}
+                                                        >
+                                                            <option value="">Assign Job...</option>
+                                                            {jobs.map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
+                                                        </select>
+                                                        
+                                                        <button 
+                                                            onClick={() => {
+                                                                setSelectedDraftSessionId(s.session_id)
+                                                                setScheduleModalOpen(true)
+                                                            }}
+                                                            style={{
+                                                                background: 'var(--accent)',
+                                                                color: '#fff',
+                                                                border: 'none',
+                                                                borderRadius: 'var(--radius)',
+                                                                padding: '6px 12px',
+                                                                fontSize: '12px',
+                                                                fontWeight: 600,
+                                                                cursor: 'pointer'
+                                                            }}
+                                                        >
+                                                            Schedule Interview
+                                                        </button>
+                                                    </div>
+                                                )}
+                                                {s.status !== 'draft' && (
+                                                    <button 
+                                                        onClick={() => navigate(`/sessions/${s.session_id}/live`)}
+                                                        style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 'var(--radius)', padding: '6px 12px', fontSize: '12px', cursor: 'pointer', marginTop: '8px' }}
+                                                    >
+                                                        View Session
+                                                    </button>
+                                                )}
                                             </div>
                                         ))}
                                     </div>
@@ -325,6 +394,32 @@ export default function CandidateDetailsPage() {
                     </div>
                 </div>
             </PageTransition>
+
+            {scheduleModalOpen && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }} onClick={() => setScheduleModalOpen(false)}>
+                    <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--bg-surface)', padding: '24px', borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: '400px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)' }}>
+                        <h2 style={{ marginBottom: '16px', fontSize: '18px', fontFamily: 'var(--font-heading)', fontWeight: 600 }}>Schedule Interview</h2>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            <div>
+                                <label style={labelStyle}>Date & Time</label>
+                                <input type="datetime-local" value={scheduleForm.scheduled_at} onChange={e => setScheduleForm({...scheduleForm, scheduled_at: e.target.value})} style={inputStyle} />
+                            </div>
+                            <div>
+                                <label style={labelStyle}>Interview Type</label>
+                                <input placeholder="e.g. Technical, Behavioral" value={scheduleForm.interview_type} onChange={e => setScheduleForm({...scheduleForm, interview_type: e.target.value})} style={inputStyle} />
+                            </div>
+                            <div>
+                                <label style={labelStyle}>Notes</label>
+                                <textarea placeholder="Preparation notes..." value={scheduleForm.notes} onChange={e => setScheduleForm({...scheduleForm, notes: e.target.value})} style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }} />
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '24px' }}>
+                            <button onClick={() => setScheduleModalOpen(false)} style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '8px 16px', borderRadius: 'var(--radius)', cursor: 'pointer', fontSize: '13px', fontWeight: 500 }}>Cancel</button>
+                            <button onClick={handleScheduleSubmit} disabled={!scheduleForm.scheduled_at} style={{ background: 'var(--accent)', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 'var(--radius)', cursor: 'pointer', opacity: scheduleForm.scheduled_at ? 1 : 0.5, fontSize: '13px', fontWeight: 600 }}>Schedule</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

@@ -101,12 +101,19 @@ def list_candidates(
     result = []
     for c in candidates:
         applied_jobs = [s.job.title for s in c.sessions if s.job]
+        
+        derived_status = "Draft"
+        if any(s.status in ["scheduled", "active", "processing"] for s in c.sessions):
+            derived_status = "Scheduled"
+        elif any(s.status == "completed" for s in c.sessions):
+            derived_status = "Completed"
+
         result.append({
             "id": str(c.id),
             "name": c.name,
             "email": c.email,
             "phone": c.phone,
-            "status": c.status or "Draft",
+            "status": derived_status,
             "applied_jobs": list(set(applied_jobs)),
             "created_at": c.created_at.isoformat()
         })
@@ -138,8 +145,15 @@ def get_candidate(
             "scheduled_at": s.scheduled_at,
             "started_at": s.started_at,
             "ended_at": s.ended_at,
-            "job": s.job.title if s.job else None
+            "job": s.job.title if s.job else None,
+            "job_id": str(s.job.id) if s.job else None
         })
+
+    derived_status = "Draft"
+    if any(s.status in ["scheduled", "active", "processing"] for s in candidate.sessions):
+        derived_status = "Scheduled"
+    elif any(s.status == "completed" for s in candidate.sessions):
+        derived_status = "Completed"
 
     # Unique jobs
     unique_jobs = {j["id"]: j for j in applied_jobs}.values()
@@ -150,7 +164,7 @@ def get_candidate(
         "email": candidate.email,
         "phone": candidate.phone,
         "notes": candidate.notes,
-        "status": candidate.status or "Draft",
+        "status": derived_status,
         "resume_url": candidate.resume_url,
         "created_at": candidate.created_at.isoformat(),
         "applied_jobs": list(unique_jobs),
@@ -185,8 +199,6 @@ def update_candidate(
         candidate.phone = payload.phone
     if payload.notes is not None:
         candidate.notes = payload.notes
-    if payload.status is not None:
-        candidate.status = payload.status
 
     db.commit()
     db.refresh(candidate)

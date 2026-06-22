@@ -2,7 +2,6 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import client from '../api/client';
-import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import PageTransition from '../components/PageTransition';
 import { SessionCardSkeleton, StatCardSkeleton } from '../components/Skeleton';
@@ -19,22 +18,17 @@ export interface EnhancedSession {
     job: string | null;
     job_id?: string | null;
     scheduled_at: string | null;
-    status: 'active' | 'completed' | 'scheduled' | 'processing' | 'cancelled' | 'no_show' | 'draft';
+    status: 'active' | 'completed' | 'scheduled' | 'processing' | 'cancelled' | 'no_show';
     metrics?: { sentiment: number; talkCandidate: number; talkInterviewer: number };
     tags?: string[];
 }
 
-type FilterStatus = 'all' | 'scheduled' | 'active' | 'processing' | 'completed' | 'cancelled' | 'no_show' | 'draft';
+type FilterStatus = 'all' | 'scheduled' | 'active' | 'processing' | 'completed' | 'cancelled' | 'no_show';
 
 export default function SessionsPage() {
-    const [showNewSession, setShowNewSession] = useState(false);
-    const [candidates, setCandidates] = useState<{ id: string, name: string }[]>([]);
-    const [selectedCandidate, setSelectedCandidate] = useState('');
-    const [creating, setCreating] = useState(false);
     const [sessions, setSessions] = useState<EnhancedSession[]>([]);
-    const [scheduledAt, setScheduledAt] = useState('');
     const [loading, setLoading] = useState(true);
-    
+
     // UI states
     const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
     const [filterJob, setFilterJob] = useState<string>('all');
@@ -44,7 +38,6 @@ export default function SessionsPage() {
     const [jobs, setJobs] = useState<{ id: string, title: string }[]>([]);
 
     const navigate = useNavigate();
-    const { theme } = useTheme();
     const { role } = useAuth();
     const [adminStats, setAdminStats] = useState<AdminStats | null>(null);
 
@@ -54,7 +47,8 @@ export default function SessionsPage() {
                 client.get('/sessions/today'),
                 new Promise(resolve => setTimeout(resolve, 500))
             ]);
-            setSessions(res.data);
+            const validSessions = res.data.filter((s: any) => s.status !== 'draft');
+            setSessions(validSessions);
         } catch (err) {
             console.error('Failed to fetch sessions', err);
         } finally {
@@ -97,34 +91,6 @@ export default function SessionsPage() {
         }
     }, [role]);
 
-    const fetchCandidates = async () => {
-        try {
-            const res = await client.get('/candidates');
-            setCandidates(res.data);
-        } catch (err) {
-            console.error('Failed to fetch candidates', err);
-        }
-    };
-
-    const handleNewSession = async () => {
-        if (!selectedCandidate) return;
-        setCreating(true);
-        try {
-            await client.post('/sessions', {
-                candidate_id: selectedCandidate,
-                scheduled_at: scheduledAt || new Date().toISOString()
-            });
-            setShowNewSession(false);
-            setSelectedCandidate('');
-            setScheduledAt('');
-            await fetchSessions();
-        } catch (err) {
-            console.error('Failed to create session', err);
-        } finally {
-            setCreating(false);
-        }
-    };
-
     const handleStartSession = async (sessionId: string) => {
         await client.patch(`/sessions/${sessionId}/start`);
         await fetchSessions();
@@ -163,7 +129,7 @@ export default function SessionsPage() {
 
     const handleAssignJob = async (sessionId: string, jobId: string) => {
         await client.patch(`/sessions/${sessionId}/job`, { job_id: jobId });
-        
+
         // update selected session in state locally without closing drawer
         const updatedSessionRes = await client.get(`/sessions/${sessionId}`);
         setSelectedSession(updatedSessionRes.data);
@@ -223,7 +189,6 @@ export default function SessionsPage() {
             completed: searchFiltered.filter(s => s.status === 'completed').length,
             cancelled: searchFiltered.filter(s => s.status === 'cancelled').length,
             no_show: searchFiltered.filter(s => s.status === 'no_show').length,
-            draft: searchFiltered.filter(s => s.status === 'draft').length,
         };
     }, [sessions, filterJob, searchQuery]);
 
@@ -237,14 +202,8 @@ export default function SessionsPage() {
         setSearchQuery('');
     };
 
-    const handleOpenCreateSession = () => {
-        fetchCandidates();
-        setShowNewSession(true);
-    };
-
     const filters: { label: string; value: FilterStatus }[] = [
         { label: 'All', value: 'all' },
-        { label: 'Draft', value: 'draft' },
         { label: 'Scheduled', value: 'scheduled' },
         { label: 'Active', value: 'active' },
         { label: 'Processing', value: 'processing' },
@@ -296,9 +255,9 @@ export default function SessionsPage() {
                     {/* Search & Filters Row */}
                     <div className="search-filters-row">
                         <SearchBar value={searchQuery} onChange={setSearchQuery} />
-                        
+
                         <div className="job-filter">
-                            <select 
+                            <select
                                 className="job-filter-select"
                                 value={filterJob}
                                 onChange={e => setFilterJob(e.target.value)}
@@ -346,35 +305,17 @@ export default function SessionsPage() {
                             hasActiveFilter={filterStatus !== 'all'}
                             hasSearchQuery={searchQuery.trim().length > 0}
                             onClearFilters={handleClearFilters}
-                            onCreateSession={handleOpenCreateSession}
+                            onCreateSession={() => navigate('/candidates')}
                         />
                     ) : filteredSessions.length === 0 && sessions.length === 0 ? (
                         <EmptyState
                             hasActiveFilter={false}
                             hasSearchQuery={false}
                             onClearFilters={handleClearFilters}
-                            onCreateSession={handleOpenCreateSession}
+                            onCreateSession={() => navigate('/candidates')}
                         />
                     ) : (
                         <div className="session-grid">
-                            {/* Create New Session Card */}
-                            <div
-                                className="create-session-card"
-                                onClick={handleOpenCreateSession}
-                                role="button"
-                                tabIndex={0}
-                                aria-label="Create a new interview session"
-                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpenCreateSession(); } }}
-                            >
-                                <div className="create-session-card__icon-wrap">
-                                    <span className="material-symbols-outlined" style={{ color: 'var(--accent)', fontSize: '26px' }} aria-hidden="true">add</span>
-                                </div>
-                                <h3 className="create-session-card__title">Create New Session</h3>
-                                <p className="create-session-card__desc">
-                                    Schedule a new interview for a candidate.
-                                </p>
-                            </div>
-
                             {/* Session Cards */}
                             {filteredSessions.map((session) => (
                                 <SessionCard
@@ -404,73 +345,17 @@ export default function SessionsPage() {
                 session={selectedSession}
                 isOpen={isDrawerOpen}
                 onClose={() => { setIsDrawerOpen(false); setTimeout(() => setSelectedSession(null), 300); }}
-                onStart={() => { if(selectedSession) handleStartSession(selectedSession.session_id); }}
-                onEnd={() => { if(selectedSession) handleEndSession(selectedSession.session_id); }}
-                onJoin={() => { if(selectedSession) navigate(`/sessions/${selectedSession.session_id}/live`); }}
-                onViewReport={() => { if(selectedSession) navigate(`/sessions/${selectedSession.session_id}/report`); }}
-                onCancel={() => { if(selectedSession) handleCancelSession(selectedSession.session_id); }}
-                onNoShow={() => { if(selectedSession) handleNoShowSession(selectedSession.session_id); }}
-                onSchedule={(payload) => { if(selectedSession) handleScheduleSession(selectedSession.session_id, payload); }}
-                onDelete={() => { if(selectedSession) handleDeleteSession(selectedSession.session_id); }}
-                onAssignJob={(jobId) => { if(selectedSession) handleAssignJob(selectedSession.session_id, jobId); }}
+                onStart={() => { if (selectedSession) handleStartSession(selectedSession.session_id); }}
+                onEnd={() => { if (selectedSession) handleEndSession(selectedSession.session_id); }}
+                onJoin={() => { if (selectedSession) navigate(`/sessions/${selectedSession.session_id}/live`); }}
+                onViewReport={() => { if (selectedSession) navigate(`/sessions/${selectedSession.session_id}/report`); }}
+                onCancel={() => { if (selectedSession) handleCancelSession(selectedSession.session_id); }}
+                onNoShow={() => { if (selectedSession) handleNoShowSession(selectedSession.session_id); }}
+                onSchedule={(payload) => { if (selectedSession) handleScheduleSession(selectedSession.session_id, payload); }}
+                onDelete={() => { if (selectedSession) handleDeleteSession(selectedSession.session_id); }}
+                onAssignJob={(jobId) => { if (selectedSession) handleAssignJob(selectedSession.session_id, jobId); }}
                 jobs={jobs}
             />
-
-            {showNewSession && (
-                <div className="modal-backdrop" onClick={() => { setShowNewSession(false); setSelectedCandidate(''); setScheduledAt(''); }}>
-                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                        <h2 className="modal-title">
-                            New Session
-                        </h2>
-                        <label className="modal-label" htmlFor="session-candidate-select">
-                            Select Candidate
-                        </label>
-                        <select
-                            id="session-candidate-select"
-                            value={selectedCandidate}
-                            onChange={e => setSelectedCandidate(e.target.value)}
-                            className="modal-input"
-                            aria-label="Select a candidate for the session"
-                        >
-                            <option value="">Choose a candidate...</option>
-                            {candidates.map(c => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                        </select>
-                        <label className="modal-label" htmlFor="session-schedule-input">
-                            Schedule Date & Time
-                        </label>
-                        <input
-                            id="session-schedule-input"
-                            type="datetime-local"
-                            value={scheduledAt}
-                            onChange={e => setScheduledAt(e.target.value)}
-                            className="modal-input"
-                            style={{ colorScheme: theme }}
-                            aria-label="Schedule date and time"
-                        />
-                        <div className="modal-actions">
-                            <button
-                                className="modal-btn--cancel"
-                                onClick={() => {
-                                    setShowNewSession(false);
-                                    setSelectedCandidate('');
-                                    setScheduledAt('');
-                                }}
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                className="modal-btn--create"
-                                onClick={handleNewSession}
-                                disabled={!selectedCandidate || creating}
-                            >
-                                {creating ? 'Creating...' : 'Create Session'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

@@ -42,9 +42,9 @@ def todays_sessions(
     sessions = db.query(InterviewSession).filter(
         or_(
             InterviewSession.scheduled_at >= today_start,
-            InterviewSession.started_at >= today_start,
-            InterviewSession.status == "draft"
+            InterviewSession.started_at >= today_start
         ),
+        InterviewSession.status != "draft",
         InterviewSession.recruiter_id == current_user.id
     ).all()
     def get_status(s: InterviewSession) -> str:

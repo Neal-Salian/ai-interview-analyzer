@@ -9,7 +9,7 @@ export default function CandidatesPage() {
     const [candidates, setCandidates] = useState<any[]>([])
     const [jobs, setJobs] = useState<any[]>([])
     const [searchQuery, setSearchQuery] = useState('')
-    const [statusFilter, setStatusFilter] = useState('All')
+    const [statusFilter, setStatusFilter] = useState('Draft')
     const [jobFilter, setJobFilter] = useState('All')
     const [loading, setLoading] = useState(true)
     const navigate = useNavigate()
@@ -35,7 +35,8 @@ export default function CandidatesPage() {
     const filteredCandidates = candidates.filter(c => {
         const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                               c.email.toLowerCase().includes(searchQuery.toLowerCase())
-        const matchesStatus = statusFilter === 'All' || (c.status || 'Draft') === statusFilter
+        const cStatus = c.status || 'Draft';
+        const matchesStatus = statusFilter === 'All' || cStatus === statusFilter;
         
         let matchesJob = true
         if (jobFilter !== 'All') {
@@ -47,7 +48,7 @@ export default function CandidatesPage() {
         return matchesSearch && matchesStatus && matchesJob
     })
 
-    const allStatuses = ['Draft', 'Active', 'Scheduled', 'Interviewing', 'Completed', 'Selected', 'Rejected', 'No Show']
+    const tabs = ['All', 'Draft', 'Scheduled', 'Completed']
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: 'var(--bg)', color: 'var(--text-primary)' }}>
@@ -103,21 +104,27 @@ export default function CandidatesPage() {
                             />
                         </div>
                         
-                        <select
-                            value={statusFilter}
-                            onChange={e => setStatusFilter(e.target.value)}
-                            style={{
-                                padding: '10px 14px',
-                                borderRadius: 'var(--radius)',
-                                border: '1px solid var(--border)',
-                                background: 'var(--bg-surface)',
-                                color: 'var(--text-primary)',
-                                fontSize: '14px'
-                            }}
-                        >
-                            <option value="All">All Statuses</option>
-                            {allStatuses.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
+                        <div style={{ display: 'flex', gap: '8px', background: 'var(--bg-surface)', padding: '4px', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+                            {tabs.map(tab => (
+                                <button
+                                    key={tab}
+                                    onClick={() => setStatusFilter(tab)}
+                                    style={{
+                                        padding: '6px 16px',
+                                        border: 'none',
+                                        background: statusFilter === tab ? 'var(--bg-surface-high)' : 'transparent',
+                                        color: statusFilter === tab ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                        borderRadius: 'var(--radius)',
+                                        fontSize: '14px',
+                                        fontWeight: statusFilter === tab ? 600 : 500,
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    {tab}
+                                </button>
+                            ))}
+                        </div>
 
                         <select
                             value={jobFilter}
