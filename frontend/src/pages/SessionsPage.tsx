@@ -19,12 +19,12 @@ export interface EnhancedSession {
     job: string | null;
     job_id?: string | null;
     scheduled_at: string | null;
-    status: 'active' | 'completed' | 'scheduled' | 'processing' | 'cancelled' | 'no_show';
+    status: 'active' | 'completed' | 'scheduled' | 'processing' | 'cancelled' | 'no_show' | 'draft';
     metrics?: { sentiment: number; talkCandidate: number; talkInterviewer: number };
     tags?: string[];
 }
 
-type FilterStatus = 'all' | 'scheduled' | 'active' | 'processing' | 'completed' | 'cancelled' | 'no_show';
+type FilterStatus = 'all' | 'scheduled' | 'active' | 'processing' | 'completed' | 'cancelled' | 'no_show' | 'draft';
 
 export default function SessionsPage() {
     const [showNewSession, setShowNewSession] = useState(false);
@@ -149,6 +149,18 @@ export default function SessionsPage() {
         if (selectedSession?.session_id === sessionId) setIsDrawerOpen(false);
     };
 
+    const handleScheduleSession = async (sessionId: string, payload: { scheduled_at: string, interview_type?: string, notes?: string }) => {
+        await client.patch(`/sessions/${sessionId}/schedule`, payload);
+        await fetchSessions();
+        if (selectedSession?.session_id === sessionId) setIsDrawerOpen(false);
+    };
+
+    const handleDeleteSession = async (sessionId: string) => {
+        await client.delete(`/sessions/${sessionId}`);
+        await fetchSessions();
+        if (selectedSession?.session_id === sessionId) setIsDrawerOpen(false);
+    };
+
     // Combined filter + search logic
     const filteredSessions = useMemo(() => {
         let result = sessions;
@@ -202,6 +214,7 @@ export default function SessionsPage() {
             completed: searchFiltered.filter(s => s.status === 'completed').length,
             cancelled: searchFiltered.filter(s => s.status === 'cancelled').length,
             no_show: searchFiltered.filter(s => s.status === 'no_show').length,
+            draft: searchFiltered.filter(s => s.status === 'draft').length,
         };
     }, [sessions, filterJob, searchQuery]);
 
@@ -222,6 +235,7 @@ export default function SessionsPage() {
 
     const filters: { label: string; value: FilterStatus }[] = [
         { label: 'All', value: 'all' },
+        { label: 'Draft', value: 'draft' },
         { label: 'Scheduled', value: 'scheduled' },
         { label: 'Active', value: 'active' },
         { label: 'Processing', value: 'processing' },
@@ -387,6 +401,8 @@ export default function SessionsPage() {
                 onViewReport={() => { if(selectedSession) navigate(`/sessions/${selectedSession.session_id}/report`); }}
                 onCancel={() => { if(selectedSession) handleCancelSession(selectedSession.session_id); }}
                 onNoShow={() => { if(selectedSession) handleNoShowSession(selectedSession.session_id); }}
+                onSchedule={(payload) => { if(selectedSession) handleScheduleSession(selectedSession.session_id, payload); }}
+                onDelete={() => { if(selectedSession) handleDeleteSession(selectedSession.session_id); }}
             />
 
             {showNewSession && (
