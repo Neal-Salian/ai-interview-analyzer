@@ -161,6 +161,15 @@ export default function SessionsPage() {
         if (selectedSession?.session_id === sessionId) setIsDrawerOpen(false);
     };
 
+    const handleAssignJob = async (sessionId: string, jobId: string) => {
+        await client.patch(`/sessions/${sessionId}/job`, { job_id: jobId });
+        
+        // update selected session in state locally without closing drawer
+        const updatedSessionRes = await client.get(`/sessions/${sessionId}`);
+        setSelectedSession(updatedSessionRes.data);
+        await fetchSessions();
+    };
+
     // Combined filter + search logic
     const filteredSessions = useMemo(() => {
         let result = sessions;
@@ -403,6 +412,8 @@ export default function SessionsPage() {
                 onNoShow={() => { if(selectedSession) handleNoShowSession(selectedSession.session_id); }}
                 onSchedule={(payload) => { if(selectedSession) handleScheduleSession(selectedSession.session_id, payload); }}
                 onDelete={() => { if(selectedSession) handleDeleteSession(selectedSession.session_id); }}
+                onAssignJob={(jobId) => { if(selectedSession) handleAssignJob(selectedSession.session_id, jobId); }}
+                jobs={jobs}
             />
 
             {showNewSession && (
