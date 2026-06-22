@@ -1,6 +1,6 @@
 
 
-type SessionStatus = 'active' | 'completed' | 'scheduled' | 'processing' | 'cancelled' | 'expired' | 'no_show';
+type SessionStatus = 'active' | 'completed' | 'scheduled' | 'processing' | 'cancelled' | 'expired' | 'no_show' | 'draft';
 
 interface StatusBadgeProps {
     status: SessionStatus;
@@ -17,6 +17,16 @@ export function StatusBadge({ status }: StatusBadgeProps) {
     };
 
     switch (status) {
+        case 'draft':
+            config = {
+                label: 'Draft',
+                bg: 'rgba(156, 163, 175, 0.1)',
+                text: '#6b7280',
+                border: 'rgba(156, 163, 175, 0.2)',
+                dot: undefined,
+                pulse: false
+            };
+            break;
         case 'scheduled':
             config = {
                 label: 'Scheduled',
