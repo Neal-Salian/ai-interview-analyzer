@@ -60,6 +60,33 @@ export default function Navbar() {
                     History
                 </button>
                 <button
+                    onClick={() => navigate('/candidates')}
+                    style={{
+                        background: 'transparent',
+                        color: 'var(--text-secondary)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 'var(--radius)',
+                        padding: '6px 14px',
+                        fontSize: '13px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        transition: 'all 0.2s ease',
+                    }}
+                    onMouseEnter={e => {
+                        e.currentTarget.style.borderColor = 'var(--accent)';
+                        e.currentTarget.style.color = 'var(--text-primary)';
+                    }}
+                    onMouseLeave={e => {
+                        e.currentTarget.style.borderColor = 'var(--border)';
+                        e.currentTarget.style.color = 'var(--text-secondary)';
+                    }}
+                    aria-label="Candidates"
+                >
+                    <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>people</span>
+                    Candidates
+                </button>
+                <button
                     onClick={() => navigate('/jobs')}
                     style={{
                         background: 'transparent',

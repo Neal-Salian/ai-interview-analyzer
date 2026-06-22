@@ -1,6 +1,6 @@
 
 
-type SessionStatus = 'active' | 'completed' | 'scheduled' | 'processing' | 'cancelled' | 'expired' | 'no_show' | 'draft';
+type SessionStatus = 'active' | 'completed' | 'scheduled' | 'processing' | 'cancelled' | 'expired' | 'no_show' | 'draft' | 'interviewing' | 'selected' | 'rejected';
 
 interface StatusBadgeProps {
     status: SessionStatus;
@@ -94,6 +94,36 @@ export function StatusBadge({ status }: StatusBadgeProps) {
                 text: '#6b7280',
                 border: 'rgba(156, 163, 175, 0.2)',
                 dot: '#6b7280',
+                pulse: false
+            };
+            break;
+        case 'interviewing':
+            config = {
+                label: 'Interviewing',
+                bg: 'rgba(234, 179, 8, 0.1)',
+                text: '#eab308',
+                border: 'rgba(234, 179, 8, 0.2)',
+                dot: '#eab308',
+                pulse: true
+            };
+            break;
+        case 'selected':
+            config = {
+                label: 'Selected',
+                bg: 'rgba(34, 197, 94, 0.1)',
+                text: '#22c55e',
+                border: 'rgba(34, 197, 94, 0.2)',
+                dot: undefined,
+                pulse: false
+            };
+            break;
+        case 'rejected':
+            config = {
+                label: 'Rejected',
+                bg: 'rgba(239, 68, 68, 0.1)',
+                text: '#ef4444',
+                border: 'rgba(239, 68, 68, 0.2)',
+                dot: undefined,
                 pulse: false
             };
             break;
