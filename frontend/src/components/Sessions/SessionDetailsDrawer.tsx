@@ -17,9 +17,11 @@ interface SessionDetailsDrawerProps {
     onNoShow?: () => void;
     onSchedule?: (payload: { scheduled_at: string, interview_type?: string, notes?: string }) => void;
     onDelete?: () => void;
+    onAssignJob?: (jobId: string) => void;
+    jobs?: { id: string, title: string }[];
 }
 
-export function SessionDetailsDrawer({ session, isOpen, onClose, onStart, onEnd, onJoin, onViewReport, onCancel, onNoShow, onSchedule, onDelete }: SessionDetailsDrawerProps) {
+export function SessionDetailsDrawer({ session, isOpen, onClose, onStart, onEnd, onJoin, onViewReport, onCancel, onNoShow, onSchedule, onDelete, onAssignJob, jobs = [] }: SessionDetailsDrawerProps) {
     const [confirmAction, setConfirmAction] = useState<'cancel' | 'no_show' | null>(null);
     const [isScheduling, setIsScheduling] = useState(false);
     const [scheduleForm, setScheduleForm] = useState({
@@ -98,10 +100,32 @@ export function SessionDetailsDrawer({ session, isOpen, onClose, onStart, onEnd,
                             <h3 style={{ fontSize: '20px', fontWeight: 600, margin: '0 0 4px 0', fontFamily: 'var(--font-heading)' }}>
                                 {session.candidate || 'Unknown Candidate'}
                             </h3>
-                            <div style={{ color: 'var(--text-secondary)', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span className="material-symbols-outlined" style={{ fontSize: '16px' }} aria-hidden="true">work</span>
-                                {session.job || 'No Role Specified'}
-                            </div>
+                            {session.status === 'draft' ? (
+                                <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span className="material-symbols-outlined" style={{ fontSize: '16px', color: 'var(--text-secondary)' }} aria-hidden="true">work</span>
+                                    <select 
+                                        value={session.job_id || ''} 
+                                        onChange={(e) => onAssignJob && onAssignJob(e.target.value)}
+                                        style={{ 
+                                            padding: '4px 8px', 
+                                            borderRadius: '6px', 
+                                            border: '1px solid var(--border)', 
+                                            background: 'var(--bg-surface-high)', 
+                                            color: 'var(--text-primary)', 
+                                            fontSize: '13px' 
+                                        }}
+                                        aria-label="Assign Job"
+                                    >
+                                        <option value="" disabled>Assign a Job...</option>
+                                        {jobs.map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
+                                    </select>
+                                </div>
+                            ) : (
+                                <div style={{ color: 'var(--text-secondary)', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span className="material-symbols-outlined" style={{ fontSize: '16px' }} aria-hidden="true">work</span>
+                                    {session.job || 'No Role Specified'}
+                                </div>
+                            )}
                         </div>
                     </div>
 
