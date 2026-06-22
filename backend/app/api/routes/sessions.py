@@ -22,6 +22,11 @@ class SessionCreate(BaseModel):
     scheduled_at: Optional[str] = None
 
 
+class SessionJobUpdate(BaseModel):
+    job_id: str
+
+
+
 class SessionSchedule(BaseModel):
     scheduled_at: str
     interview_type: Optional[str] = None
@@ -233,6 +238,35 @@ async def no_show_session(
 
     logger.info(f"[sessions] marked session {session.id} as no-show")
     return {"session_id": str(session.id), "status": session.status}
+
+
+@router.patch("/sessions/{session_id}/job")
+async def update_session_job(
+    payload: SessionJobUpdate,
+    db: DBSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+    session: InterviewSession = Depends(get_owned_session),
+):
+    if session.status != "draft":
+        raise HTTPException(status_code=400, detail="Only draft sessions can be edited")
+        
+    job = db.query(Job).filter(Job.id == payload.job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    # Admin bypass for testing, otherwise check ownership
+    from app.db.models import UserRole
+    if job.recruiter_id and job.recruiter_id != current_user.id and current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Not authorized to use this job")
+    if job.is_archived:
+        raise HTTPException(status_code=400, detail="Cannot assign archived job")
+        
+    session.job_id = job.id
+    db.commit()
+    db.refresh(session)
+    
+    logger.info(f"[sessions] updated job for draft session {session.id} to {job.id}")
+    return {"session_id": str(session.id), "job_id": str(job.id), "job": job.title}
+
 
 
 @router.patch("/sessions/{session_id}/schedule")
