@@ -1,0 +1,575 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Import Candidates Modal
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.import-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: importOverlayIn 200ms ease;
+}
+
+@keyframes importOverlayIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.import-modal {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-elevated);
+    width: 95vw;
+    max-width: 780px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: importModalSlideIn 250ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes importModalSlideIn {
+    from { opacity: 0; transform: translateY(16px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+
+.import-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+}
+
+.import-modal-header h2 {
+    font-family: var(--font-heading);
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0;
+}
+
+.import-modal-close {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: var(--radius);
+    display: flex;
+    align-items: center;
+    transition: color 0.15s, background 0.15s;
+}
+
+.import-modal-close:hover {
+    color: var(--text-primary);
+    background: var(--bg-surface-high);
+}
+
+/* ── Steps indicator ────────────────────────────────────────────────────── */
+
+.import-steps {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-surface-high);
+}
+
+.import-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-weight: 500;
+    transition: color 0.2s;
+}
+
+.import-step.active {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.import-step.completed {
+    color: var(--success);
+}
+
+.import-step-number {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    border: 2px solid var(--border);
+    color: var(--text-secondary);
+    transition: all 0.2s;
+}
+
+.import-step.active .import-step-number {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: #fff;
+}
+
+.import-step.completed .import-step-number {
+    border-color: var(--success);
+    background: var(--success);
+    color: #fff;
+}
+
+.import-step-divider {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+    min-width: 20px;
+}
+
+/* ── Body ───────────────────────────────────────────────────────────────── */
+
+.import-modal-body {
+    padding: 24px;
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+/* ── Dropzone ───────────────────────────────────────────────────────────── */
+
+.import-dropzone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius-lg);
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: var(--bg);
+}
+
+.import-dropzone:hover,
+.import-dropzone.drag-over {
+    border-color: var(--accent);
+    background: rgba(91, 140, 255, 0.04);
+}
+
+.import-dropzone-icon {
+    font-size: 48px !important;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+    display: block;
+    opacity: 0.6;
+}
+
+.import-dropzone:hover .import-dropzone-icon,
+.import-dropzone.drag-over .import-dropzone-icon {
+    color: var(--accent);
+    opacity: 1;
+}
+
+.import-dropzone h3 {
+    font-family: var(--font-heading);
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: var(--text-primary);
+}
+
+.import-dropzone p {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+.import-file-selected {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--bg-surface-high);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    margin-top: 16px;
+}
+
+.import-file-selected .file-info {
+    flex: 1;
+}
+
+.import-file-selected .file-name {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.import-file-selected .file-size {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.import-file-remove {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: var(--radius);
+    display: flex;
+}
+
+.import-file-remove:hover {
+    color: var(--danger);
+    background: rgba(239, 68, 68, 0.1);
+}
+
+/* ── Job selector (upload step) ─────────────────────────────────────────── */
+
+.import-job-selector {
+    margin-top: 20px;
+}
+
+.import-job-selector label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 6px;
+    font-family: var(--font-heading);
+}
+
+.import-job-selector select {
+    width: 100%;
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--bg-surface-high);
+    color: var(--text-primary);
+    font-size: 14px;
+    font-family: var(--font-body);
+}
+
+/* ── Template download ──────────────────────────────────────────────────── */
+
+.import-template-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--accent);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-weight: 500;
+    padding: 0;
+    transition: opacity 0.15s;
+}
+
+.import-template-link:hover {
+    opacity: 0.8;
+}
+
+/* ── Validation preview ─────────────────────────────────────────────────── */
+
+.import-summary-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.import-summary-card {
+    padding: 16px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--bg);
+    text-align: center;
+}
+
+.import-summary-card .count {
+    font-family: var(--font-heading);
+    font-size: 28px;
+    font-weight: 700;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.import-summary-card .label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 500;
+}
+
+.import-summary-card.valid .count { color: var(--success); }
+.import-summary-card.duplicates .count { color: var(--warning); }
+.import-summary-card.invalid .count { color: var(--danger); }
+
+/* ── Preview tabs ───────────────────────────────────────────────────────── */
+
+.import-preview-tabs {
+    display: flex;
+    gap: 4px;
+    background: var(--bg);
+    padding: 4px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    margin-bottom: 12px;
+}
+
+.import-preview-tab {
+    flex: 1;
+    padding: 8px 12px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+}
+
+.import-preview-tab.active {
+    background: var(--bg-surface-high);
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+/* ── Preview table ──────────────────────────────────────────────────────── */
+
+.import-preview-table-wrap {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.import-preview-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.import-preview-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+.import-preview-table th {
+    padding: 10px 14px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    text-align: left;
+    background: var(--bg-surface-high);
+    border-bottom: 1px solid var(--border);
+}
+
+.import-preview-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+    vertical-align: top;
+}
+
+.import-preview-table tr:last-child td {
+    border-bottom: none;
+}
+
+.import-error-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 500;
+    border-radius: 10px;
+    margin: 2px 2px 2px 0;
+}
+
+.import-error-tag.error {
+    background: rgba(239, 68, 68, 0.12);
+    color: var(--danger);
+}
+
+.import-error-tag.warning {
+    background: rgba(245, 158, 11, 0.12);
+    color: var(--warning);
+}
+
+.import-error-tag.success {
+    background: rgba(34, 197, 94, 0.12);
+    color: var(--success);
+}
+
+/* ── Results (step 3) ───────────────────────────────────────────────────── */
+
+.import-results-container {
+    text-align: center;
+    padding: 20px 0;
+}
+
+.import-results-icon {
+    font-size: 56px !important;
+    color: var(--success);
+    margin-bottom: 16px;
+    display: block;
+    animation: importResultPop 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes importResultPop {
+    from { transform: scale(0.5); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+.import-results-container h3 {
+    font-family: var(--font-heading);
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.import-results-container p {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin-bottom: 24px;
+}
+
+.import-results-stats {
+    display: flex;
+    justify-content: center;
+    gap: 32px;
+    margin-bottom: 28px;
+}
+
+.import-results-stat .stat-value {
+    font-family: var(--font-heading);
+    font-size: 32px;
+    font-weight: 700;
+    display: block;
+}
+
+.import-results-stat .stat-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.import-results-stat.created .stat-value { color: var(--success); }
+.import-results-stat.skipped .stat-value { color: var(--warning); }
+.import-results-stat.failed .stat-value { color: var(--danger); }
+
+/* ── Footer ─────────────────────────────────────────────────────────────── */
+
+.import-modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-surface-high);
+}
+
+.import-btn {
+    padding: 10px 20px;
+    border-radius: var(--radius);
+    font-size: 14px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s;
+    font-family: var(--font-body);
+}
+
+.import-btn.primary {
+    background: var(--accent);
+    background-image: var(--accent-gradient);
+    color: #fff;
+    box-shadow: var(--accent-glow);
+}
+
+.import-btn.primary:hover {
+    opacity: 0.9;
+}
+
+.import-btn.primary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.import-btn.secondary {
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+}
+
+.import-btn.secondary:hover {
+    color: var(--text-primary);
+    background: var(--bg-surface-high);
+}
+
+/* ── Spinner ────────────────────────────────────────────────────────────── */
+
+.import-spinner {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 50%;
+    border-top-color: #fff;
+    animation: spin 0.6s linear infinite;
+}
+
+/* ── Empty preview state ────────────────────────────────────────────────── */
+
+.import-preview-empty {
+    text-align: center;
+    padding: 32px;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+    .import-modal {
+        max-width: 100%;
+        max-height: 100vh;
+        border-radius: 0;
+    }
+
+    .import-summary-cards {
+        grid-template-columns: 1fr;
+    }
+
+    .import-results-stats {
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .import-dropzone {
+        padding: 32px 16px;
+    }
+}
