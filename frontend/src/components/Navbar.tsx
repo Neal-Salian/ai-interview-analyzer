@@ -34,21 +34,7 @@ export default function Navbar() {
             <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
 
 
-                <button
-                    onClick={() => navigate('/candidates/new')}
-                    style={{
-                        background: 'var(--accent)',
-                        backgroundImage: 'var(--accent-gradient)',
-                        boxShadow: 'var(--accent-glow)',
-                        color: '#ffffff',
-                        border: 'none',
-                        borderRadius: 'var(--radius)',
-                        padding: '6px 14px',
-                        fontSize: '13px',
-                    }}
-                >
-                    + New Candidate
-                </button>
+
                 <div style={{
                     background: 'var(--bg-surface-high)',
                     border: '1px solid var(--border)',
