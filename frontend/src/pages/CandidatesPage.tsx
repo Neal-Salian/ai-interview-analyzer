@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import client from '../api/client'
 import PageTransition from '../components/PageTransition'
 import { StatusBadge } from '../components/Sessions/StatusBadge'
+import ImportCandidatesModal from '../components/ImportCandidatesModal'
 
 export default function CandidatesPage() {
     const [candidates, setCandidates] = useState<any[]>([])
@@ -12,25 +13,28 @@ export default function CandidatesPage() {
     const [statusFilter, setStatusFilter] = useState('Draft')
     const [jobFilter, setJobFilter] = useState('All')
     const [loading, setLoading] = useState(true)
+    const [showImportModal, setShowImportModal] = useState(false)
     const navigate = useNavigate()
 
-    useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const [candRes, jobsRes] = await Promise.all([
-                    client.get('/candidates'),
-                    client.get('/jobs')
-                ])
-                setCandidates(candRes.data)
-                setJobs(jobsRes.data)
-            } catch (err) {
-                console.error('Failed to load data:', err)
-            } finally {
-                setLoading(false)
-            }
+    const fetchData = useCallback(async () => {
+        try {
+            setLoading(true)
+            const [candRes, jobsRes] = await Promise.all([
+                client.get('/candidates'),
+                client.get('/jobs')
+            ])
+            setCandidates(candRes.data)
+            setJobs(jobsRes.data)
+        } catch (err) {
+            console.error('Failed to load data:', err)
+        } finally {
+            setLoading(false)
         }
-        fetchData()
     }, [])
+
+    useEffect(() => {
+        fetchData()
+    }, [fetchData])
 
     const filteredCandidates = candidates.filter(c => {
         const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -60,27 +64,50 @@ export default function CandidatesPage() {
                             <h1 style={{ fontSize: '28px', fontWeight: 700, fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em', marginBottom: '4px' }}>Candidates</h1>
                             <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Manage all your candidates and track their progress.</p>
                         </div>
-                        <button
-                            onClick={() => navigate('/candidates/new')}
-                            style={{
-                                background: 'var(--accent)',
-                                backgroundImage: 'var(--accent-gradient)',
-                                color: '#fff',
-                                border: 'none',
-                                borderRadius: 'var(--radius)',
-                                padding: '10px 16px',
-                                fontSize: '14px',
-                                fontWeight: 600,
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                cursor: 'pointer',
-                                boxShadow: 'var(--accent-glow)'
-                            }}
-                        >
-                            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add</span>
-                            Add Candidate
-                        </button>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <button
+                                onClick={() => setShowImportModal(true)}
+                                style={{
+                                    background: 'var(--bg-surface)',
+                                    color: 'var(--text-primary)',
+                                    border: '1px solid var(--border)',
+                                    borderRadius: 'var(--radius)',
+                                    padding: '10px 16px',
+                                    fontSize: '14px',
+                                    fontWeight: 600,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s',
+                                }}
+                                id="import-candidates-btn"
+                            >
+                                <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>upload_file</span>
+                                Import Candidates
+                            </button>
+                            <button
+                                onClick={() => navigate('/candidates/new')}
+                                style={{
+                                    background: 'var(--accent)',
+                                    backgroundImage: 'var(--accent-gradient)',
+                                    color: '#fff',
+                                    border: 'none',
+                                    borderRadius: 'var(--radius)',
+                                    padding: '10px 16px',
+                                    fontSize: '14px',
+                                    fontWeight: 600,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    cursor: 'pointer',
+                                    boxShadow: 'var(--accent-glow)'
+                                }}
+                            >
+                                <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add</span>
+                                Add Candidate
+                            </button>
+                        </div>
                     </div>
 
                     <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -203,6 +230,14 @@ export default function CandidatesPage() {
                     )}
                 </div>
             </PageTransition>
+
+            {showImportModal && (
+                <ImportCandidatesModal
+                    onClose={() => setShowImportModal(false)}
+                    onImportComplete={() => fetchData()}
+                    jobs={jobs.map((j: any) => ({ id: j.id, title: j.title }))}
+                />
+            )}
         </div>
     )
 }
