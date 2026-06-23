@@ -129,3 +129,4 @@ wrapt==2.1.2
 
 argon2-cffi==23.1.0
 slowapi==0.1.9
+openpyxl==3.1.5
