@@ -39,7 +39,7 @@ export default function BehavioralAnalysisCard({ emotionTimeline }: Props) {
                         <YAxis domain={[0, 100]} hide />
                         <Tooltip
                             contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', fontSize: '12px', borderRadius: '8px' }}
-                            formatter={(val: any, _name: string, props: any) => [`${val}%`, props.payload.emotion]}
+                            formatter={(val: any, _name: any, props: any) => [`${val}%`, props.payload.emotion]}
                             labelStyle={{ display: 'none' }}
                         />
                         <Line 
