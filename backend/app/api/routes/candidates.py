@@ -7,6 +7,7 @@ import datetime
 import logging
 import shutil
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
@@ -297,10 +298,63 @@ def upload_resume(
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    candidate.resume_url = f"/api/uploads/{safe_filename}"
+    candidate.resume_url = f"/api/candidates/{candidate_id}/resume"
     db.commit()
     
     return {"status": "success", "resume_url": candidate.resume_url}
+
+
+# ── Resume download (authenticated) ──────────────────────────────────────────
+
+@router.get("/candidates/{candidate_id}/resume")
+def download_resume(
+    candidate_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_recruiter)
+):
+    """Serve the candidate's resume with authentication & ownership validation."""
+    candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    if current_user.role != UserRole.ADMIN and candidate.recruiter_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to view this candidate")
+
+    if not candidate.resume_url:
+        raise HTTPException(status_code=404, detail="No resume uploaded")
+
+    # Resolve the on-disk filename from the stored resume_url.
+    # Legacy records may store "/api/uploads/<file>"; new records store
+    # "/api/candidates/<id>/resume". In both cases the actual file lives in
+    # uploads/resume_<candidate_id>.<ext>.
+    upload_dir = os.path.abspath("uploads")
+
+    # Try to find the resume file by scanning for known extensions
+    found_path = None
+    for ext in (".pdf", ".docx"):
+        candidate_file = f"resume_{candidate.id}{ext}"
+        # Guard against path traversal
+        safe_name = os.path.basename(candidate_file)
+        full_path = os.path.join(upload_dir, safe_name)
+        resolved = os.path.realpath(full_path)
+        if not resolved.startswith(upload_dir):
+            raise HTTPException(status_code=403, detail="Access denied")
+        if os.path.isfile(resolved):
+            found_path = resolved
+            break
+
+    if not found_path:
+        raise HTTPException(status_code=404, detail="Resume file not found on disk")
+
+    media_type = (
+        "application/pdf" if found_path.endswith(".pdf")
+        else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+    return FileResponse(
+        path=found_path,
+        media_type=media_type,
+        filename=os.path.basename(found_path),
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════

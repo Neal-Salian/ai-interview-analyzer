@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 
 logger = logging.getLogger(__name__)
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Query, status
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from app.db.database import get_db
@@ -68,10 +67,11 @@ app.include_router(history.router, prefix="/api")
 from app.api.routes import admin
 app.include_router(admin.router, prefix="/api")
 
-# Mount uploads directory for resume retrieval
+# Ensure uploads directory exists (used by resume upload endpoint)
 import os
 os.makedirs("uploads", exist_ok=True)
-app.mount("/api/uploads", StaticFiles(directory="uploads"), name="uploads")
+# NOTE: StaticFiles mount for /api/uploads was removed for security.
+# Resumes are now served via authenticated GET /api/candidates/{id}/resume.
 
 
 @app.get("/health")
