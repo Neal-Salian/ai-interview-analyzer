@@ -289,9 +289,24 @@ export default function CandidateDetailsPage() {
                                         <span className="material-symbols-outlined" style={{ color: 'var(--accent)', fontSize: '24px' }}>description</span>
                                         <div style={{ flex: 1, overflow: 'hidden' }}>
                                             <div style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                                                {candidate.resume_url.split('/').pop()}
+                                                Resume
                                             </div>
-                                            <a href={`http://localhost:8001${candidate.resume_url}`} target="_blank" rel="noreferrer" style={{ fontSize: '12px', color: 'var(--accent)', textDecoration: 'none' }}>View File</a>
+                                            <button
+                                                onClick={async () => {
+                                                    try {
+                                                        const res = await client.get(`/candidates/${id}/resume`, { responseType: 'blob' })
+                                                        const contentType = (res.headers['content-type'] as string) || 'application/octet-stream'
+                                                        const blob = new Blob([res.data], { type: contentType })
+                                                        const url = URL.createObjectURL(blob)
+                                                        window.open(url, '_blank')
+                                                        // Revoke after a delay to allow the tab to load
+                                                        setTimeout(() => URL.revokeObjectURL(url), 60000)
+                                                    } catch {
+                                                        alert('Failed to download resume.')
+                                                    }
+                                                }}
+                                                style={{ background: 'none', border: 'none', padding: 0, fontSize: '12px', color: 'var(--accent)', textDecoration: 'none', cursor: 'pointer' }}
+                                            >View File</button>
                                         </div>
                                     </div>
                                 ) : (
