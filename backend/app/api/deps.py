@@ -70,7 +70,7 @@ def get_owned_session(
         raise HTTPException(status_code=404, detail="Session not found")
         
     if current_user.role != UserRole.ADMIN:
-        if session.recruiter_id and session.recruiter_id != current_user.id:
+        if session.recruiter_id != current_user.id:
             raise HTTPException(status_code=404, detail="Session not found")
     return session
 
