@@ -15,6 +15,27 @@ from app.ml.stream.rtmp_consumer import consume_stream
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # ── Critical: Database must be reachable ──────────────────────────────
+    from app.db.database import engine
+    from sqlalchemy import text
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        logger.info("[STARTUP] Database connection verified")
+    except Exception as e:
+        logger.critical(f"[STARTUP] Database unavailable — aborting: {e}")
+        raise
+
+    # ── Critical: Metric plugins must load ────────────────────────────────
+    try:
+        from app.ml.analysis.registry import discover_metrics
+        discover_metrics()
+        logger.info("[STARTUP] Metric plugins discovered")
+    except Exception as e:
+        logger.critical(f"[STARTUP] Metric discovery failed — aborting: {e}")
+        raise
+
+    # ── Non-critical: Recover active streaming sessions ───────────────────
     try:
         active = get_active_sessions()
         for session in active:
@@ -24,16 +45,7 @@ async def lifespan(app: FastAPI):
                 asyncio.create_task(consume_stream(str(session.id), rtmp_url))
         logger.info(f"[STARTUP] Recovery check done — {len(active)} active session(s) found")
     except Exception as e:
-        # DB might not be ready yet — log and continue, don't crash the server
-        logger.exception(f"[STARTUP] Could not check active sessions (DB unavailable?): {e}")
-
-    # Discover and register all metric plugins (Phase 10)
-    try:
-        from app.ml.analysis.registry import discover_metrics
-        discover_metrics()
-        logger.info("[STARTUP] Metric plugins discovered")
-    except Exception as e:
-        logger.exception(f"[STARTUP] Metric discovery failed (non-fatal): {e}")
+        logger.warning(f"[STARTUP] Could not recover active sessions: {e}")
 
     yield
 
@@ -44,9 +56,11 @@ from app.core.rate_limit import limiter, RateLimitExceeded, _rate_limit_exceeded
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+from app.core.config import settings
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()],
     allow_methods=["*"],
     allow_headers=["*"],
     allow_credentials=True,  # Important for cookies
