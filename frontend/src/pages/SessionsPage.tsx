@@ -21,7 +21,9 @@ export interface EnhancedSession {
     status: 'active' | 'completed' | 'scheduled' | 'processing' | 'cancelled' | 'no_show' | 'draft';
     metrics?: { sentiment: number; talkCandidate: number; talkInterviewer: number };
     tags?: string[];
+    zoom_meeting_id?: string | null;
     zoom_join_url?: string | null;
+    zoom_start_url?: string | null;
 }
 
 type FilterStatus = 'all' | 'scheduled' | 'active' | 'processing' | 'completed' | 'cancelled' | 'no_show';
@@ -135,6 +137,42 @@ export default function SessionsPage() {
         const updatedSessionRes = await client.get(`/sessions/${sessionId}`);
         setSelectedSession(updatedSessionRes.data);
         await fetchSessions();
+    };
+
+    const handleStartZoomMeeting = async (sessionId: string) => {
+        try {
+            const res = await client.get(`/sessions/${sessionId}/zoom`);
+            const startUrl = res.data.zoom_start_url;
+            if (startUrl) {
+                window.open(startUrl, '_blank', 'noopener,noreferrer');
+            } else {
+                alert('This session does not have an associated Zoom meeting.');
+            }
+        } catch (err: any) {
+            const detail = err?.response?.data?.detail || 'Failed to load Zoom meeting information.';
+            alert(detail);
+        }
+    };
+
+    const handleCopyJoinLink = async (sessionId: string) => {
+        const session = sessions.find(s => s.session_id === sessionId);
+        const joinUrl = session?.zoom_join_url || selectedSession?.zoom_join_url;
+        if (joinUrl) {
+            try {
+                await navigator.clipboard.writeText(joinUrl);
+                // Brief visual feedback would go here in a toast system
+            } catch {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = joinUrl;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+            }
+        } else {
+            alert('No Zoom join link available for this session.');
+        }
     };
 
     // Combined filter + search logic
@@ -327,6 +365,7 @@ export default function SessionsPage() {
                                     onEnd={() => handleEndSession(session.session_id)}
                                     onJoin={() => navigate(`/sessions/${session.session_id}/live`)}
                                     onViewReport={() => navigate(`/sessions/${session.session_id}/report`)}
+                                    onStartZoom={() => handleStartZoomMeeting(session.session_id)}
                                 />
                             ))}
                         </div>
@@ -355,6 +394,8 @@ export default function SessionsPage() {
                 onSchedule={(payload) => { if (selectedSession) handleScheduleSession(selectedSession.session_id, payload); }}
                 onDelete={() => { if (selectedSession) handleDeleteSession(selectedSession.session_id); }}
                 onAssignJob={(jobId) => { if (selectedSession) handleAssignJob(selectedSession.session_id, jobId); }}
+                onStartZoom={() => { if (selectedSession) handleStartZoomMeeting(selectedSession.session_id); }}
+                onCopyJoinLink={() => { if (selectedSession) handleCopyJoinLink(selectedSession.session_id); }}
                 jobs={jobs}
             />
         </div>
