@@ -89,8 +89,19 @@ async def send_candidate_invite(
 async def send_recruiter_session_confirmation(
     to_email: str, recruiter_name: str, candidate_name: str,
     job_title: Optional[str], scheduled_at: str, session_id: str,
+    zoom_start_url: Optional[str] = None,
 ) -> bool:
     subject = f"Interview Scheduled — {candidate_name}"
+    zoom_button = ""
+    if zoom_start_url:
+        zoom_button = f"""
+        <p style="margin:24px 0">
+          <a href="{zoom_start_url}"
+             style="background:#2d8cff;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">
+            Start Zoom Meeting
+          </a>
+        </p>
+        """
     html = f"""
     <div style="font-family:sans-serif;max-width:600px;margin:auto">
       <h2 style="color:#1a1a2e">Interview Scheduled</h2>
@@ -101,6 +112,7 @@ async def send_recruiter_session_confirmation(
         <tr><td style="color:#666;padding-right:16px">Scheduled</td><td><strong>{scheduled_at}</strong></td></tr>
         <tr><td style="color:#666;padding-right:16px">Session ID</td><td><code>{session_id}</code></td></tr>
       </table>
+      {zoom_button}
       <p style="color:#888;font-size:12px">Automated message — Interview Analytics Platform.</p>
     </div>
     """
