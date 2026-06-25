@@ -311,6 +311,8 @@ async def schedule_session(
         raise HTTPException(status_code=400, detail="Only draft sessions can be scheduled")
 
     scheduled_at = datetime.datetime.fromisoformat(payload.scheduled_at)
+    if scheduled_at.tzinfo is not None:
+        scheduled_at = scheduled_at.astimezone(datetime.timezone.utc).replace(tzinfo=None)
     
     # We allow minor leeway (e.g., 5 minutes) for scheduling if needed, or strict 'in the past' check.
     if scheduled_at < datetime.datetime.utcnow() - datetime.timedelta(minutes=5):
