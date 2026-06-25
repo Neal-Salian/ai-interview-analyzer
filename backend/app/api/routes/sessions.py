@@ -65,6 +65,7 @@ def todays_sessions(
             "job_id": str(s.job_id) if s.job_id else None,
             "scheduled_at": s.scheduled_at,
             "status": get_status(s),
+            "zoom_join_url": s.zoom_join_url,
         }
         for s in sessions
     ]
@@ -163,6 +164,7 @@ def get_session(
         "ended_at": session.ended_at,
         "interview_type": interview_type,
         "notes": notes,
+        "zoom_join_url": session.zoom_join_url,
     }
 
 
@@ -289,6 +291,45 @@ async def schedule_session(
     if scheduled_at < datetime.datetime.utcnow() - datetime.timedelta(minutes=5):
         raise HTTPException(status_code=400, detail="Cannot schedule session in the past")
 
+    # ── Create Zoom meeting ──────────────────────────────────────────────
+    from app.services.zoom_api import zoom_api, ZoomAPIError
+
+    candidate = session.candidate
+    job = session.job
+    topic = f"Interview — {candidate.name if candidate else 'Candidate'}"
+    if job:
+        topic += f" — {job.title}"
+
+    try:
+        zoom_result = await zoom_api.create_meeting(
+            topic=topic,
+            start_time=scheduled_at.isoformat() + "Z",
+            duration_minutes=45,
+        )
+    except ZoomAPIError as e:
+        logger.error(
+            "[sessions] Zoom meeting creation failed for session %s: %s",
+            session.id, e,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to create Zoom meeting. The session remains in draft state. Please try again.",
+        )
+    except Exception as e:
+        logger.error(
+            "[sessions] unexpected error creating Zoom meeting for session %s: %s",
+            session.id, e,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Zoom service unavailable. The session remains in draft state.",
+        )
+
+    # ── Populate session fields ──────────────────────────────────────────
+    session.zoom_meeting_id = zoom_result.meeting_id
+    session.zoom_join_url = zoom_result.join_url
+    session.zoom_start_url = zoom_result.start_url
+    session.zoom_password = zoom_result.password
     session.status = "scheduled"
     session.scheduled_at = scheduled_at
     
@@ -300,15 +341,28 @@ async def schedule_session(
     if payload.notes:
         current_summary["notes"] = payload.notes
     session.session_summary = current_summary
-        
-    db.commit()
-    db.refresh(session)
 
-    # Fire-and-forget notification emails
+    # ── Commit with orphan cleanup on failure ────────────────────────────
+    try:
+        db.commit()
+        db.refresh(session)
+    except Exception as commit_err:
+        db.rollback()
+        logger.error(
+            "[sessions] DB commit failed after Zoom meeting creation for "
+            "session %s, meeting %s: %s",
+            session.id, zoom_result.meeting_id, commit_err,
+        )
+        # Attempt to clean up the orphan Zoom meeting
+        background_tasks.add_task(zoom_api.delete_meeting, zoom_result.meeting_id)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to save session. The Zoom meeting is being cleaned up.",
+        )
+
+    # ── Fire-and-forget notification emails ──────────────────────────────
     from app.services.email import send_candidate_invite, send_recruiter_session_confirmation
 
-    candidate = session.candidate
-    job = session.job
     scheduled_str = session.scheduled_at.strftime("%A %d %B %Y, %H:%M") if session.scheduled_at else "TBD"
 
     if candidate:
@@ -318,6 +372,7 @@ async def schedule_session(
             candidate_name=candidate.name,
             job_title=job.title if job else None,
             scheduled_at=scheduled_str,
+            zoom_link=session.zoom_join_url,
         )
 
         background_tasks.add_task(
@@ -328,6 +383,7 @@ async def schedule_session(
             job_title=job.title if job else None,
             scheduled_at=scheduled_str,
             session_id=str(session.id),
+            zoom_start_url=session.zoom_start_url,
         )
 
     logger.info(f"[sessions] scheduled draft session {session.id} for {candidate.name if candidate else 'unknown'}")
@@ -337,7 +393,8 @@ async def schedule_session(
     return {
         "session_id": str(session.id),
         "status": session.status,
-        "scheduled_at": session.scheduled_at.isoformat()
+        "scheduled_at": session.scheduled_at.isoformat(),
+        "zoom_join_url": session.zoom_join_url,
     }
 
 
