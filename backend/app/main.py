@@ -1,8 +1,14 @@
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 
+import httpx
+
 logger = logging.getLogger(__name__)
+
+# Captured at startup for uptime reporting in /health
+_app_start_time: float = 0.0
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -15,6 +21,13 @@ from app.ml.stream.rtmp_consumer import consume_stream
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _app_start_time
+    _app_start_time = time.monotonic()
+
+    # ── Structured logging setup ──────────────────────────────────────────
+    from app.core.logging_config import setup_logging
+    setup_logging()
+
     # ── Critical: Database must be reachable ──────────────────────────────
     from app.db.database import engine
     from sqlalchemy import text
@@ -89,8 +102,62 @@ os.makedirs("uploads", exist_ok=True)
 
 
 @app.get("/health")
-def health():
-    return {"status": "ok"}
+async def health():
+    """
+    Comprehensive health check — probes Database, Ollama, and RTMP subsystems.
+
+    Always returns HTTP 200 (so Docker/k8s healthchecks pass even when
+    degraded).  The JSON body distinguishes "healthy" vs "degraded".
+    """
+    from app.core.registry import _registry
+
+    db_ok = _check_database()
+    ollama_ok = await _check_ollama()
+    rtmp_ok = await _check_rtmp()
+
+    all_healthy = db_ok and ollama_ok and rtmp_ok
+
+    return {
+        "status": "healthy" if all_healthy else "degraded",
+        "database": db_ok,
+        "ollama": ollama_ok,
+        "rtmp": rtmp_ok,
+        "active_sessions": len(_registry),
+        "uptime_seconds": round(time.monotonic() - _app_start_time, 1),
+    }
+
+
+def _check_database() -> bool:
+    """Probe database with SELECT 1."""
+    try:
+        from app.db.database import engine
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return True
+    except Exception as e:
+        logger.warning(f"[health] database check failed: {e}")
+        return False
+
+
+async def _check_ollama() -> bool:
+    """Probe Ollama API (model listing endpoint)."""
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get("http://localhost:11434/api/tags")
+            return resp.status_code == 200
+    except Exception:
+        return False
+
+
+async def _check_rtmp() -> bool:
+    """Probe nginx-rtmp stats page."""
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get("http://localhost:8080/stat")
+            return resp.status_code == 200
+    except Exception:
+        return False
 
 
 @app.websocket("/ws/live/{session_id}")
