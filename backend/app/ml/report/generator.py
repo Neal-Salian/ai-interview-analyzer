@@ -17,6 +17,8 @@ from sqlalchemy.orm import Session as DBSession
 
 logger = logging.getLogger(__name__)
 
+from app.core.logging_config import log_event
+
 
 def generate_report(session_id: str, db: DBSession) -> dict:
     """
@@ -108,8 +110,11 @@ def generate_report(session_id: str, db: DBSession) -> dict:
             }
             for e in ie_records
         ]
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(
+            f"[REPORT] Integrity events query failed for session {session_id}: {e} "
+            f"— integrity section will be empty"
+        )
 
     # Evaluations
     evaluations = []
@@ -162,6 +167,8 @@ def generate_report(session_id: str, db: DBSession) -> dict:
     communication_metric = find_metric("Communication")
 
     # ── Build report sections ────────────────────────────────────────────
+    log_event(logger, "report_generated",
+              session_id=session_id, sections_count=12)
     return {
         "session_id": session_id,
         "generated_at": __import__("datetime").datetime.utcnow().isoformat(),

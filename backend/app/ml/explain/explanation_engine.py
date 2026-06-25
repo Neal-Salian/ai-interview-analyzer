@@ -61,8 +61,8 @@ async def generate_explanation(prompt: str) -> str:
     # Parse the Ollama response envelope
     try:
         envelope = response.json()
-    except Exception:
-        logger.warning("[EXPLAIN] Invalid JSON response from Ollama")
+    except Exception as e:
+        logger.warning(f"[EXPLAIN] Invalid JSON response from Ollama: {e} | body={response.text[:200]}")
         return "Could not parse explanation response."
 
     raw = envelope.get("response", "").strip()
