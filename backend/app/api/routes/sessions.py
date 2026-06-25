@@ -65,6 +65,7 @@ def todays_sessions(
             "job_id": str(s.job_id) if s.job_id else None,
             "scheduled_at": s.scheduled_at,
             "status": get_status(s),
+            "zoom_meeting_id": s.zoom_meeting_id,
             "zoom_join_url": s.zoom_join_url,
         }
         for s in sessions
@@ -164,6 +165,30 @@ def get_session(
         "ended_at": session.ended_at,
         "interview_type": interview_type,
         "notes": notes,
+        "zoom_meeting_id": session.zoom_meeting_id,
+        "zoom_join_url": session.zoom_join_url,
+    }
+
+
+@router.get("/sessions/{session_id}/zoom")
+def get_session_zoom(
+    session: InterviewSession = Depends(get_owned_session),
+):
+    """
+    Returns Zoom meeting details for an owned session.
+    Only the session owner (recruiter) or admin can access this.
+    The zoom_start_url is the host URL and must never be exposed to candidates.
+    """
+    if not session.zoom_meeting_id:
+        raise HTTPException(
+            status_code=404,
+            detail="This session does not have an associated Zoom meeting.",
+        )
+
+    return {
+        "session_id": str(session.id),
+        "zoom_meeting_id": session.zoom_meeting_id,
+        "zoom_start_url": session.zoom_start_url,
         "zoom_join_url": session.zoom_join_url,
     }
 
