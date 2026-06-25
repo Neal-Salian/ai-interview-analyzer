@@ -12,6 +12,7 @@ from app.db.crud import (
     save_attention, save_integrity_event,
 )
 from app.api.websocket import broadcast
+from app.core.logging_config import log_event
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,9 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
         )
     except Exception as e:
         logger.exception(f"[CONSUMER] Failed to open stream: {e}")
+        log_event(logger, "consumer_failed", level=logging.ERROR,
+                  session_id=session_id, error_type=type(e).__name__,
+                  error_message=str(e))
         return
 
     last_analyzed = 0
@@ -38,6 +42,8 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
     integrity_state = {}  # Phase 3: persistent state for liveness tracking
 
     logger.info("[CONSUMER] Stream opened. Starting packet loop...")
+    log_event(logger, "consumer_started",
+              session_id=session_id, rtmp_url=rtmp_url)
 
     for packet in container.demux():
         if packet.dts is None:
@@ -95,7 +101,7 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                                 "details": str(event.get("details", "")),
                             })
                     except ImportError:
-                        pass  # Phase 3 not installed yet
+                        logger.debug("[INTEGRITY] integrity_checker module not installed, skipping")
                     except Exception as e:
                         logger.warning(f"[INTEGRITY ERROR] {e}")
 
@@ -238,7 +244,7 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                             "details": str(voice_result.get("details", "")),
                         })
                 except ImportError:
-                    pass
+                    logger.debug("[VOICE INTEGRITY] voice_detector module not installed, skipping")
                 except Exception as e:
                     logger.warning(f"[VOICE INTEGRITY] {e}")
 
