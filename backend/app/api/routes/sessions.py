@@ -11,6 +11,7 @@ from app.db.database import get_db
 from app.db.models import Session as InterviewSession, Candidate, Job
 from app.api.deps import get_current_user, get_owned_session
 from app.services.teardown import teardown_session
+from app.core.logging_config import log_event
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -129,6 +130,8 @@ def create_session(
     )
 
     logger.info(f"[sessions] created session {session.id} for {candidate.name}")
+    log_event(logger, "session_scheduled",
+              session_id=str(session.id), candidate_name=candidate.name)
     return {
         "session_id": str(session.id),
         "candidate": candidate.name,
@@ -328,6 +331,9 @@ async def schedule_session(
         )
 
     logger.info(f"[sessions] scheduled draft session {session.id} for {candidate.name if candidate else 'unknown'}")
+    log_event(logger, "session_scheduled",
+              session_id=str(session.id),
+              candidate_name=candidate.name if candidate else "unknown")
     return {
         "session_id": str(session.id),
         "status": session.status,
