@@ -12,9 +12,10 @@ interface SessionCardProps {
     onEnd: (e: React.MouseEvent) => void;
     onJoin: (e: React.MouseEvent) => void;
     onViewReport: (e: React.MouseEvent) => void;
+    onStartZoom?: (e: React.MouseEvent) => void;
 }
 
-export function SessionCard({ session, onClick, onStart, onEnd, onJoin, onViewReport }: SessionCardProps) {
+export function SessionCard({ session, onClick, onStart, onEnd, onJoin, onViewReport, onStartZoom }: SessionCardProps) {
     const [panelCount, setPanelCount] = useState<number | null>(null);
 
     useEffect(() => {
@@ -141,15 +142,34 @@ export function SessionCard({ session, onClick, onStart, onEnd, onJoin, onViewRe
                     </>
                 )}
                 {session.status === 'scheduled' && (
-                    <button
-                        className="session-card__action session-card__action--secondary"
-                        onClick={(e) => handleActionClick(e, onStart)}
-                        aria-label="Start session"
-                        style={{ width: '100%' }}
-                    >
-                        <span className="material-symbols-outlined" aria-hidden="true">play_circle</span>
-                        Start Session
-                    </button>
+                    <div style={{ display: 'flex', gap: '6px', width: '100%' }}>
+                        {session.zoom_meeting_id && onStartZoom && (
+                            <button
+                                className="session-card__action"
+                                onClick={(e) => handleActionClick(e, onStartZoom)}
+                                aria-label="Start Zoom meeting"
+                                style={{
+                                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                                    background: 'linear-gradient(135deg, #2d8cff 0%, #0b5fcc 100%)',
+                                    color: '#fff', border: 'none', borderRadius: '8px',
+                                    fontSize: '12px', fontWeight: 600, padding: '8px 10px', cursor: 'pointer',
+                                    boxShadow: '0 2px 6px rgba(45, 140, 255, 0.25)'
+                                }}
+                            >
+                                <span className="material-symbols-outlined" style={{ fontSize: '16px' }} aria-hidden="true">videocam</span>
+                                Zoom
+                            </button>
+                        )}
+                        <button
+                            className="session-card__action session-card__action--secondary"
+                            onClick={(e) => handleActionClick(e, onStart)}
+                            aria-label="Start session"
+                            style={{ flex: 2 }}
+                        >
+                            <span className="material-symbols-outlined" aria-hidden="true">play_circle</span>
+                            Start Session
+                        </button>
+                    </div>
                 )}
                 {session.status === 'processing' && (
                     <button
