@@ -18,6 +18,7 @@ from app.db.models import Candidate, Session as InterviewSession, Recruiter
 from app.db.crud import get_session_by_meeting_id
 from app.ml.stream.rtmp_consumer import consume_stream
 from app.services.teardown import teardown_session
+from app.core.logging_config import log_event
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -312,6 +313,9 @@ async def zoom_webhook(
             f"[webhook] meeting.started — session {session_id} "
             f"launched and registered"
         )
+        log_event(logger, "meeting_started",
+                  session_id=session_id, meeting_id=meeting_id,
+                  is_orphan=(existing is None))
         return JSONResponse(status_code=200, content={
             "message": "Session started",
             "session_id": session_id,
@@ -387,6 +391,8 @@ async def zoom_webhook(
             f"[webhook] meeting.ended — teardown task launched for "
             f"session {sid}, returning 200 to Zoom"
         )
+        log_event(logger, "meeting_ended",
+                  session_id=sid, meeting_id=meeting_id)
 
         return JSONResponse(status_code=200, content={
             "message": "Session teardown initiated",
