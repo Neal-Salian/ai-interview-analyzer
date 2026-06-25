@@ -147,6 +147,20 @@ export function SessionDetailsDrawer({ session, isOpen, onClose, onStart, onEnd,
                             <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Type</span>
                             <span style={{ fontSize: '13px', fontWeight: 500 }}>{interviewType}</span>
                         </div>
+                        {session.zoom_join_url && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Zoom</span>
+                                <a
+                                    href={session.zoom_join_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{ fontSize: '13px', fontWeight: 500, color: '#2d8cff', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                >
+                                    <span className="material-symbols-outlined" style={{ fontSize: '16px' }} aria-hidden="true">videocam</span>
+                                    Join Meeting
+                                </a>
+                            </div>
+                        )}
                     </div>
 
                     {/* Quick Actions based on Status */}
