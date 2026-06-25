@@ -18,12 +18,15 @@ interface SessionDetailsDrawerProps {
     onSchedule?: (payload: { scheduled_at: string, interview_type?: string, notes?: string }) => void;
     onDelete?: () => void;
     onAssignJob?: (jobId: string) => void;
+    onStartZoom?: () => void;
+    onCopyJoinLink?: () => void;
     jobs?: { id: string, title: string }[];
 }
 
-export function SessionDetailsDrawer({ session, isOpen, onClose, onStart, onEnd, onJoin, onViewReport, onCancel, onNoShow, onSchedule, onDelete, onAssignJob, jobs = [] }: SessionDetailsDrawerProps) {
+export function SessionDetailsDrawer({ session, isOpen, onClose, onStart, onEnd, onJoin, onViewReport, onCancel, onNoShow, onSchedule, onDelete, onAssignJob, onStartZoom, onCopyJoinLink, jobs = [] }: SessionDetailsDrawerProps) {
     const [confirmAction, setConfirmAction] = useState<'cancel' | 'no_show' | null>(null);
     const [isScheduling, setIsScheduling] = useState(false);
+    const [copiedLink, setCopiedLink] = useState(false);
     const [scheduleForm, setScheduleForm] = useState({
         scheduled_at: '',
         interview_type: '',
@@ -34,6 +37,7 @@ export function SessionDetailsDrawer({ session, isOpen, onClose, onStart, onEnd,
     useEffect(() => {
         setConfirmAction(null);
         setIsScheduling(false);
+        setCopiedLink(false);
         setScheduleForm({ scheduled_at: '', interview_type: '', notes: '' });
     }, [isOpen, session?.session_id]);
     // Escape key handler
@@ -147,21 +151,100 @@ export function SessionDetailsDrawer({ session, isOpen, onClose, onStart, onEnd,
                             <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Type</span>
                             <span style={{ fontSize: '13px', fontWeight: 500 }}>{interviewType}</span>
                         </div>
-                        {session.zoom_join_url && (
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Zoom</span>
-                                <a
-                                    href={session.zoom_join_url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    style={{ fontSize: '13px', fontWeight: 500, color: '#2d8cff', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                >
-                                    <span className="material-symbols-outlined" style={{ fontSize: '16px' }} aria-hidden="true">videocam</span>
-                                    Join Meeting
-                                </a>
-                            </div>
-                        )}
                     </div>
+
+                    {/* Zoom Meeting Info — only for scheduled/active with a meeting */}
+                    {session.zoom_meeting_id && ['scheduled', 'active'].includes(session.status) && (
+                        <div style={{
+                            display: 'flex', flexDirection: 'column', gap: '10px', padding: '14px 16px',
+                            backgroundColor: 'rgba(45, 140, 255, 0.06)', borderRadius: '12px',
+                            border: '1px solid rgba(45, 140, 255, 0.15)'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+                                <span className="material-symbols-outlined" style={{ fontSize: '18px', color: '#2d8cff' }} aria-hidden="true">videocam</span>
+                                <span style={{ fontSize: '14px', fontWeight: 600, color: '#2d8cff' }}>Zoom Meeting</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Meeting ID</span>
+                                <span style={{ fontSize: '13px', fontWeight: 500, fontFamily: 'monospace', letterSpacing: '0.5px' }}>
+                                    {session.zoom_meeting_id}
+                                </span>
+                            </div>
+
+                            {session.status === 'scheduled' && (
+                                <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                                    <button
+                                        onClick={() => onStartZoom && onStartZoom()}
+                                        style={{
+                                            flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                                            padding: '10px 14px', fontSize: '13px', fontWeight: 600, borderRadius: '8px',
+                                            border: 'none', cursor: 'pointer', color: '#fff',
+                                            background: 'linear-gradient(135deg, #2d8cff 0%, #0b5fcc 100%)',
+                                            boxShadow: '0 2px 8px rgba(45, 140, 255, 0.3)',
+                                            transition: 'all 0.2s ease'
+                                        }}
+                                        aria-label="Start Zoom meeting as host"
+                                    >
+                                        <span className="material-symbols-outlined" style={{ fontSize: '18px' }} aria-hidden="true">videocam</span>
+                                        Start Zoom Meeting
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            if (onCopyJoinLink) {
+                                                onCopyJoinLink();
+                                                setCopiedLink(true);
+                                                setTimeout(() => setCopiedLink(false), 2000);
+                                            }
+                                        }}
+                                        style={{
+                                            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                                            padding: '10px 12px', fontSize: '13px', fontWeight: 500, borderRadius: '8px',
+                                            border: '1px solid var(--border)', cursor: 'pointer',
+                                            color: copiedLink ? '#10b981' : 'var(--text-secondary)',
+                                            backgroundColor: copiedLink ? 'rgba(16, 185, 129, 0.08)' : 'var(--bg-surface-high)',
+                                            transition: 'all 0.2s ease'
+                                        }}
+                                        aria-label="Copy candidate join link"
+                                    >
+                                        <span className="material-symbols-outlined" style={{ fontSize: '16px' }} aria-hidden="true">
+                                            {copiedLink ? 'check' : 'content_copy'}
+                                        </span>
+                                        {copiedLink ? 'Copied!' : 'Copy Link'}
+                                    </button>
+                                </div>
+                            )}
+
+                            {session.status === 'active' && (
+                                <button
+                                    onClick={() => onStartZoom && onStartZoom()}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                                        padding: '10px 14px', fontSize: '13px', fontWeight: 600, borderRadius: '8px',
+                                        border: 'none', cursor: 'pointer', color: '#fff', marginTop: '4px',
+                                        background: 'linear-gradient(135deg, #2d8cff 0%, #0b5fcc 100%)',
+                                        boxShadow: '0 2px 8px rgba(45, 140, 255, 0.3)',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                    aria-label="Join the current Zoom meeting"
+                                >
+                                    <span className="material-symbols-outlined" style={{ fontSize: '18px' }} aria-hidden="true">videocam</span>
+                                    Join Current Meeting
+                                </button>
+                            )}
+                        </div>
+                    )}
+
+                    {/* No Zoom meeting warning for scheduled/active */}
+                    {!session.zoom_meeting_id && ['scheduled', 'active'].includes(session.status) && (
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px',
+                            backgroundColor: 'rgba(245, 158, 11, 0.08)', borderRadius: '10px',
+                            border: '1px solid rgba(245, 158, 11, 0.2)', fontSize: '13px', color: 'var(--text-secondary)'
+                        }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: '18px', color: '#f59e0b' }} aria-hidden="true">warning</span>
+                            This session does not have an associated Zoom meeting.
+                        </div>
+                    )}
 
                     {/* Quick Actions based on Status */}
                     <div style={{ marginTop: '4px' }}>
