@@ -135,10 +135,13 @@ class RuntimeManager:
         log_event(logger, "rtmp_start_requested",
                   rtmp_url=rtmp_url, **log_kwargs)
 
+        job_id = str(session_model.job_id) if session_model and session_model.job_id else ""
+
         result = await rtmp_service.start(
             session_id=session_id,
             rtmp_url=rtmp_url,
             recruiter_id=recruiter_id or "",
+            job_id=job_id,
         )
 
         startup_duration_ms = result.get("startup_duration_ms", 0)
@@ -190,18 +193,26 @@ class RuntimeManager:
         db = SessionLocal()
         session = db.query(InterviewSession).filter(InterviewSession.id == session_id).first()
         
+        meeting_id = getattr(session, "zoom_meeting_id", None) if session else None
+        recruiter_id = str(session.recruiter_id) if session and session.recruiter_id else None
+
+        log_kwargs = {
+            "session_id": session_id,
+            "meeting_id": meeting_id,
+            "recruiter_id": recruiter_id,
+        }
+        
         try:
-            log_event(logger, "runtime_check_started", session_id=session_id)
+            log_event(logger, "runtime_check_started", **log_kwargs)
             
             # 1. RTMP Server Reachable
             cls.update_progress(session_id, 20, "Checking RTMP Server Reachable...")
             if await rtmp_service.check_health():
                 cls.set_check_result(session_id, "rtmp", True)
-            else:
                 cls.set_failed(session_id, "rtmp", "Failed to connect to streaming backend.")
                 session.ai_runtime_status = "failed"
                 db.commit()
-                log_event(logger, "runtime_failed", session_id=session_id, failed_component="rtmp")
+                log_event(logger, "runtime_failed", failed_component="rtmp", **log_kwargs)
                 return
                 
             await asyncio.sleep(0.5)
@@ -210,11 +221,10 @@ class RuntimeManager:
             cls.update_progress(session_id, 40, "Checking Ollama connectivity...")
             if await ollama_service.check_health():
                 cls.set_check_result(session_id, "ollama", True)
-            else:
                 cls.set_failed(session_id, "ollama", "Failed to connect to local LLM.")
                 session.ai_runtime_status = "failed"
                 db.commit()
-                log_event(logger, "runtime_failed", session_id=session_id, failed_component="ollama")
+                log_event(logger, "runtime_failed", failed_component="ollama", **log_kwargs)
                 return
                 
             await asyncio.sleep(0.5)
@@ -223,11 +233,10 @@ class RuntimeManager:
             cls.update_progress(session_id, 60, "Checking Whisper dependencies...")
             if await whisper_service.check_health():
                 cls.set_check_result(session_id, "whisper", True)
-            else:
                 cls.set_failed(session_id, "whisper", "Missing Whisper dependencies.")
                 session.ai_runtime_status = "failed"
                 db.commit()
-                log_event(logger, "runtime_failed", session_id=session_id, failed_component="whisper")
+                log_event(logger, "runtime_failed", failed_component="whisper", **log_kwargs)
                 return
                 
             await asyncio.sleep(0.5)
@@ -236,11 +245,10 @@ class RuntimeManager:
             cls.update_progress(session_id, 80, "Checking DeepFace dependencies...")
             if await deepface_service.check_health():
                 cls.set_check_result(session_id, "deepface", True)
-            else:
                 cls.set_failed(session_id, "deepface", "Missing DeepFace dependencies.")
                 session.ai_runtime_status = "failed"
                 db.commit()
-                log_event(logger, "runtime_failed", session_id=session_id, failed_component="deepface")
+                log_event(logger, "runtime_failed", failed_component="deepface", **log_kwargs)
                 return
                 
             await asyncio.sleep(0.5)
@@ -255,14 +263,14 @@ class RuntimeManager:
             db.commit()
             
             status = cls.get_status(session_id)
-            log_event(logger, "runtime_check_completed", session_id=session_id, duration_ms=status.get("duration_ms"))
-            log_event(logger, "runtime_ready", session_id=session_id)
+            log_event(logger, "runtime_check_completed", duration_ms=status.get("duration_ms"), **log_kwargs)
+            log_event(logger, "runtime_ready", **log_kwargs)
             
         except Exception as e:
             logger.error(f"Initialization task error: {e}")
             cls.set_failed(session_id, "internal", "Internal server error during initialization.")
             session.ai_runtime_status = "failed"
             db.commit()
-            log_event(logger, "runtime_failed", session_id=session_id, failed_component="internal")
+            log_event(logger, "runtime_failed", failed_component="internal", **log_kwargs)
         finally:
             db.close()
