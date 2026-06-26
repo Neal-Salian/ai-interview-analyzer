@@ -471,99 +471,7 @@ def get_session_runtime_status(
         "message": f"AI engine {runtime}."
     }
 
-async def _initialize_runtime(session_id: str):
-    from app.db.database import SessionLocal
-    db = SessionLocal()
-    session = db.query(InterviewSession).filter(InterviewSession.id == session_id).first()
-    
-    try:
-        log_event(logger, "runtime_check_started", session_id=session_id)
-        
-        # 1. RTMP Server Reachable
-        RuntimeManager.update_progress(session_id, 20, "Checking RTMP Server Reachable...")
-        try:
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                resp = await client.get("http://localhost:8080/stat")
-                if resp.status_code == 200:
-                    RuntimeManager.set_check_result(session_id, "rtmp", True)
-                else:
-                    raise Exception("RTMP returned non-200")
-        except Exception as e:
-            RuntimeManager.set_failed(session_id, "rtmp", "Failed to connect to streaming backend.")
-            session.ai_runtime_status = "failed"
-            db.commit()
-            log_event(logger, "runtime_failed", session_id=session_id, failed_component="rtmp")
-            return
-            
-        await asyncio.sleep(0.5) # Slight delay for UI smoothness
-        
-        # 2. Ollama Connectivity
-        RuntimeManager.update_progress(session_id, 40, "Checking Ollama connectivity...")
-        try:
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                resp = await client.get("http://localhost:11434/api/tags")
-                if resp.status_code == 200:
-                    RuntimeManager.set_check_result(session_id, "ollama", True)
-                else:
-                    raise Exception("Ollama returned non-200")
-        except Exception as e:
-            RuntimeManager.set_failed(session_id, "ollama", "Failed to connect to local LLM.")
-            session.ai_runtime_status = "failed"
-            db.commit()
-            log_event(logger, "runtime_failed", session_id=session_id, failed_component="ollama")
-            return
-            
-        await asyncio.sleep(0.5)
 
-        # 3. Whisper Dependencies
-        RuntimeManager.update_progress(session_id, 60, "Checking Whisper dependencies...")
-        try:
-            import whisper
-            RuntimeManager.set_check_result(session_id, "whisper", True)
-        except Exception as e:
-            RuntimeManager.set_failed(session_id, "whisper", "Missing Whisper dependencies.")
-            session.ai_runtime_status = "failed"
-            db.commit()
-            log_event(logger, "runtime_failed", session_id=session_id, failed_component="whisper")
-            return
-            
-        await asyncio.sleep(0.5)
-
-        # 4. DeepFace Dependencies
-        RuntimeManager.update_progress(session_id, 80, "Checking DeepFace dependencies...")
-        try:
-            import deepface
-            RuntimeManager.set_check_result(session_id, "deepface", True)
-        except Exception as e:
-            RuntimeManager.set_failed(session_id, "deepface", "Missing DeepFace dependencies.")
-            session.ai_runtime_status = "failed"
-            db.commit()
-            log_event(logger, "runtime_failed", session_id=session_id, failed_component="deepface")
-            return
-            
-        await asyncio.sleep(0.5)
-
-        # 5. WebSocket Readiness
-        RuntimeManager.update_progress(session_id, 90, "Verifying real-time bridge...")
-        RuntimeManager.set_check_result(session_id, "websocket", True)
-        await asyncio.sleep(0.5)
-        
-        RuntimeManager.set_ready(session_id)
-        session.ai_runtime_status = "ready"
-        db.commit()
-        
-        status = RuntimeManager.get_status(session_id)
-        log_event(logger, "runtime_check_completed", session_id=session_id, duration_ms=status.get("duration_ms"))
-        log_event(logger, "runtime_ready", session_id=session_id)
-        
-    except Exception as e:
-        logger.error(f"Initialization task error: {e}")
-        RuntimeManager.set_failed(session_id, "internal", "Internal server error during initialization.")
-        session.ai_runtime_status = "failed"
-        db.commit()
-        log_event(logger, "runtime_failed", session_id=session_id, failed_component="internal")
-    finally:
-        db.close()
 
 
 @router.post("/sessions/{session_id}/initialize-ai")
@@ -582,7 +490,7 @@ def initialize_ai(
     RuntimeManager.set_initializing(str(session.id))
     log_event(logger, "runtime_initializing", session_id=str(session.id))
     
-    background_tasks.add_task(_initialize_runtime, str(session.id))
+    background_tasks.add_task(RuntimeManager.initialize_session, str(session.id))
     
     return {
         "runtime": session.ai_runtime_status,
