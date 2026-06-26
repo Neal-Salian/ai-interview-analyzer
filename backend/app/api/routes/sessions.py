@@ -451,9 +451,16 @@ async def delete_session(
 def get_session_runtime_status(
     session: InterviewSession = Depends(get_owned_session),
 ):
-    runtime = session.ai_runtime_status or "not_initialized"
+    db_runtime = session.ai_runtime_status or "not_initialized"
     manager_status = RuntimeManager.get_status(str(session.id))
+    manager_runtime = manager_status.get("status", "not_initialized")
     
+    # RuntimeManager is the source of truth for in-flight transitions.
+    # Use its status if it reflects a more advanced state than the DB.
+    # This handles the race where the background task updates RuntimeManager
+    # before committing to DB (e.g., starting_rtmp → running).
+    runtime = manager_runtime if manager_runtime in ("starting_rtmp", "running", "failed") else db_runtime
+
     # Merge DB status with transient initialization status
     return {
         "runtime": runtime,
@@ -499,7 +506,8 @@ def initialize_ai(
 
 
 @router.post("/sessions/{session_id}/start-analysis")
-def start_analysis(
+async def start_analysis(
+    background_tasks: BackgroundTasks,
     db: DBSession = Depends(get_db),
     current_user=Depends(get_current_user),
     session: InterviewSession = Depends(get_owned_session),
@@ -517,15 +525,38 @@ def start_analysis(
             detail=f"AI runtime must be READY to start analysis. Current state: {runtime}",
         )
 
-    if not RuntimeManager.start_analysis(
-        str(session.id), 
-        db=db, 
-        session_model=session, 
-        recruiter_id=str(current_user.id)
-    ):
-        raise HTTPException(status_code=400, detail="Failed to transition runtime to RUNNING.")
+    # Persist intermediate DB status so polling picks it up immediately.
+    # Do NOT touch RuntimeManager._state here — start_analysis() owns
+    # its own state transitions and will check for "ready".
+    session.ai_runtime_status = "starting_rtmp"
+    db.commit()
+    db.refresh(session)
+
+    # Run the actual RTMP startup in the background so the HTTP response
+    # returns immediately.  The frontend will poll runtime-status and
+    # pick up the transition to RUNNING or FAILED.
+    async def _run_start_analysis():
+        from app.db.database import SessionLocal
+        from app.db.models import Session as InterviewSessionModel
+        bg_db = SessionLocal()
+        try:
+            bg_session = bg_db.query(InterviewSessionModel).filter(
+                InterviewSessionModel.id == str(session.id)
+            ).first()
+            await RuntimeManager.start_analysis(
+                str(session.id),
+                db=bg_db,
+                session_model=bg_session,
+                recruiter_id=str(current_user.id),
+            )
+        except Exception as e:
+            logger.error(f"Background start_analysis error: {e}")
+        finally:
+            bg_db.close()
+
+    asyncio.create_task(_run_start_analysis())
 
     return {
-        "runtime": session.ai_runtime_status,
-        "message": "AI analysis started."
+        "runtime": "starting_rtmp",
+        "message": "RTMP consumer starting. Poll runtime-status for updates."
     }
