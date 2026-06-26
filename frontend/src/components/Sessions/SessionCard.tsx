@@ -167,7 +167,7 @@ export function SessionCard({ session, onClick, onStart, onEnd, onJoin, onViewRe
                             style={{ flex: 2 }}
                         >
                             <span className="material-symbols-outlined" aria-hidden="true">play_circle</span>
-                            Start Session
+                            Start AI Analysis
                         </button>
                     </div>
                 )}
