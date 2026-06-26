@@ -363,7 +363,7 @@ export function SessionDetailsDrawer({ session, isOpen, onClose, onStart, onEnd,
                                             aria-label="Start this session"
                                         >
                                             <span className="material-symbols-outlined" style={{ fontSize: '20px' }} aria-hidden="true">play_circle</span>
-                                            Start Session
+                                            Start AI Analysis
                                         </button>
                                         <div style={{ display: 'flex', gap: '8px' }}>
                                             <button
