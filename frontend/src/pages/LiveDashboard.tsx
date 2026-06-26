@@ -337,8 +337,9 @@ export default function LiveDashboard() {
                                     {aiRuntime === 'not_initialized' && <><span className="material-symbols-outlined" style={{ color: 'var(--text-secondary)' }}>power_settings_new</span><div><div style={{ fontWeight: 600 }}>AI Engine Not Initialized</div></div></>}
                                     {aiRuntime === 'initializing' && <><span className="material-symbols-outlined" style={{ color: '#f59e0b', animation: 'spin 2s linear infinite' }}>sync</span><div><div style={{ fontWeight: 600, color: '#f59e0b' }}>AI Engine Initializing... {aiRuntimeDetails.progress}%</div><div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{aiRuntimeDetails.current_step || 'Loading interview engine...'}</div></div></>}
                                     {aiRuntime === 'ready' && <><span className="material-symbols-outlined" style={{ color: 'var(--success)' }}>check_circle</span><div><div style={{ fontWeight: 600, color: 'var(--success)' }}>AI Engine Ready {aiRuntimeDetails.duration_ms ? `(${aiRuntimeDetails.duration_ms}ms)` : ''}</div><div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Ready for analysis</div></div></>}
+                                    {aiRuntime === 'starting_rtmp' && <><span className="material-symbols-outlined" style={{ color: '#f59e0b', animation: 'spin 2s linear infinite' }}>stream</span><div><div style={{ fontWeight: 600, color: '#f59e0b' }}>Starting RTMP Stream...</div><div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{aiRuntimeDetails.current_step || 'Connecting to video stream...'}</div></div></>}
                                     {aiRuntime === 'running' && <><span className="material-symbols-outlined" style={{ color: 'var(--success)' }}>play_circle</span><div><div style={{ fontWeight: 600, color: 'var(--success)' }}>AI Analysis Running</div><div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Live analysis active</div></div></>}
-                                    {aiRuntime === 'failed' && <><span className="material-symbols-outlined" style={{ color: 'var(--danger)' }}>error</span><div><div style={{ fontWeight: 600, color: 'var(--danger)' }}>AI Engine Initialization Failed</div><div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{aiRuntimeDetails.current_step || `Failed at component: ${aiRuntimeDetails.failed_component}`}</div></div></>}
+                                    {aiRuntime === 'failed' && <><span className="material-symbols-outlined" style={{ color: 'var(--danger)' }}>error</span><div><div style={{ fontWeight: 600, color: 'var(--danger)' }}>AI Engine Failed</div><div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{aiRuntimeDetails.current_step || `Failed at component: ${aiRuntimeDetails.failed_component}`}</div></div></>}
                                 </div>
                                 <div style={{ display: 'flex', gap: '8px' }}>
                                     {aiRuntime === 'failed' && (
@@ -348,6 +349,8 @@ export default function LiveDashboard() {
                                     )}
                                     {aiRuntime === 'running' ? (
                                         <span style={{ padding: '8px 16px', background: 'rgba(52, 211, 153, 0.1)', color: 'var(--success)', border: '1px solid var(--success)', borderRadius: '6px', fontWeight: 500, fontSize: '13px' }}>🟢 AI Analysis Running</span>
+                                    ) : aiRuntime === 'starting_rtmp' ? (
+                                        <span style={{ padding: '8px 16px', background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', border: '1px solid #f59e0b', borderRadius: '6px', fontWeight: 500, fontSize: '13px', animation: 'pulse 2s ease-in-out infinite' }}>⏳ Connecting...</span>
                                     ) : (
                                         <button 
                                             onClick={handleStartAnalysis}
