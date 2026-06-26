@@ -7,7 +7,7 @@ import datetime
 import logging
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -19,6 +19,7 @@ from app.db.crud import get_session_by_meeting_id
 from app.ml.stream.rtmp_consumer import consume_stream
 from app.services.teardown import teardown_session
 from app.core.logging_config import log_event
+from app.runtime.manager import RuntimeManager
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -125,44 +126,12 @@ def _verify_request_signature(
     return True
 
 
-# ── Consumer retry wrapper ─────────────────────────────────────────────────────
-
-async def run_consumer_with_retry(session_id: str, rtmp_url: str, job_id: str = ""):
-    """
-    Wraps consume_stream in a retry loop.
-    Retries up to 3 times with a 3-second gap on failure.
-    A brief stream blip won't kill the pipeline.
-    """
-    max_retries = 3
-    for attempt in range(1, max_retries + 1):
-        try:
-            logger.info(
-                f"[consumer] attempt {attempt}/{max_retries} "
-                f"for session {session_id}"
-            )
-            await consume_stream(session_id, rtmp_url, job_id)
-            logger.info(f"[consumer] stream ended cleanly for session {session_id}")
-            break
-        except asyncio.CancelledError:
-            logger.info(f"[consumer] cancelled for session {session_id}")
-            raise
-        except Exception as e:
-            logger.warning(f"[consumer] attempt {attempt} failed: {e}")
-            if attempt < max_retries:
-                logger.info("[consumer] retrying in 3 seconds...")
-                await asyncio.sleep(3)
-            else:
-                logger.error(
-                    f"[consumer] all {max_retries} attempts exhausted "
-                    f"for session {session_id}"
-                )
-
-
 # ── Webhook endpoint ───────────────────────────────────────────────────────────
 
 @router.post("/zoom")
 async def zoom_webhook(
     request: Request,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     # Read raw body first — required for HMAC and manual JSON parse
@@ -298,21 +267,39 @@ async def zoom_webhook(
             )
 
         session_id = str(session.id)
-        job_id = str(session.job_id) if session.job_id else ""
-        rtmp_url = f"rtmp://localhost:1935/stream/{meeting_id}"
+        recruiter_id_str = str(session.recruiter_id) if session.recruiter_id else None
 
-        if job_id:
-            logger.info(f"[JOB_CONTEXT] Session {session_id} using job_id={job_id}")
+        # ── Trigger Automatic AI Initialization ───────────────────────────
+        runtime_status = RuntimeManager.get_status(session_id).get("status")
+        
+        # Initialization Guard
+        if runtime_status not in ["initializing", "ready", "starting_rtmp", "running"]:
+            RuntimeManager.set_initializing(session_id)
+            session.ai_runtime_status = "initializing"
+            db.commit()
 
-        consumer_task = asyncio.create_task(
-            run_consumer_with_retry(session_id, rtmp_url, job_id)
-        )
-        register_session(session_id, consumer_task)
+            log_event(
+                logger, 
+                "runtime_auto_initialize_requested",
+                session_id=session_id, 
+                meeting_id=meeting_id, 
+                recruiter_id=recruiter_id_str,
+                trigger="meeting.started"
+            )
 
-        logger.info(
-            f"[webhook] meeting.started — session {session_id} "
-            f"launched and registered"
-        )
+            log_event(
+                logger, 
+                "runtime_initializing",
+                session_id=session_id, 
+                meeting_id=meeting_id, 
+                recruiter_id=recruiter_id_str,
+                trigger="meeting.started"
+            )
+
+            background_tasks.add_task(RuntimeManager.initialize_session, session_id)
+            logger.info(f"[webhook] meeting.started — AI initialization triggered for session {session_id}")
+        else:
+            logger.info(f"[webhook] meeting.started — skipping AI initialization, runtime already {runtime_status}")
         log_event(logger, "meeting_started",
                   session_id=session_id, meeting_id=meeting_id,
                   is_orphan=(existing is None))
