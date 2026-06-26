@@ -84,30 +84,92 @@ class RuntimeManager:
             cls._state[session_id]["duration_ms"] = int((time.time() - start_time) * 1000)
 
     @classmethod
-    def start_analysis(cls, session_id: str, db=None, session_model=None, recruiter_id: str = None) -> bool:
-        """Transition runtime from READY to RUNNING. Returns True on success."""
+    async def start_analysis(cls, session_id: str, db=None, session_model=None, recruiter_id: str = None) -> bool:
+        """
+        Transition runtime from READY → starting_rtmp → RUNNING (or FAILED).
+
+        Orchestrates RTMP consumer startup via RTMPService.
+        Returns True on success, False on failure.
+        """
+        from app.core.logging_config import log_event
+        from app.services.ai import rtmp_service
+
         state = cls._state.get(session_id)
         if not state:
             return False
         # Only allow transition from ready
         if state.get("status") != "ready":
             return False
-            
+
+        log_kwargs = {"session_id": session_id}
+        if recruiter_id:
+            log_kwargs["recruiter_id"] = recruiter_id
+
+        log_event(logger, "analysis_start_requested", **log_kwargs)
+
+        # ── Intermediate state: Starting RTMP ───────────────────────────
+        state["status"] = "starting_rtmp"
+        state["current_step"] = "Starting RTMP consumer..."
+        state["progress"] = 100
+
+        if db and session_model:
+            session_model.ai_runtime_status = "starting_rtmp"
+            db.commit()
+            db.refresh(session_model)
+
+        # ── Build RTMP URL from zoom_meeting_id ─────────────────────────
+        zoom_meeting_id = getattr(session_model, "zoom_meeting_id", None) if session_model else None
+        if not zoom_meeting_id:
+            reason = "No Zoom meeting ID — cannot determine RTMP stream URL."
+            cls.set_failed(session_id, "rtmp_consumer", reason)
+            if db and session_model:
+                session_model.ai_runtime_status = "failed"
+                db.commit()
+                db.refresh(session_model)
+            log_event(logger, "rtmp_failed", failure_reason=reason, **log_kwargs)
+            return False
+
+        rtmp_url = f"rtmp://localhost:1935/stream/{zoom_meeting_id}"
+
+        # ── Call RTMPService.start() ────────────────────────────────────
+        log_event(logger, "rtmp_start_requested",
+                  rtmp_url=rtmp_url, **log_kwargs)
+
+        result = await rtmp_service.start(
+            session_id=session_id,
+            rtmp_url=rtmp_url,
+            recruiter_id=recruiter_id or "",
+        )
+
+        startup_duration_ms = result.get("startup_duration_ms", 0)
+
+        if not result["success"]:
+            # ── FAILED ──────────────────────────────────────────────────
+            error_msg = result.get("error", "RTMP consumer startup failed.")
+            cls.set_failed(session_id, "rtmp_consumer", error_msg)
+            if db and session_model:
+                session_model.ai_runtime_status = "failed"
+                db.commit()
+                db.refresh(session_model)
+            log_event(logger, "rtmp_failed",
+                      failure_reason=error_msg,
+                      startup_duration_ms=startup_duration_ms,
+                      **log_kwargs)
+            return False
+
+        # ── RUNNING ─────────────────────────────────────────────────────
         state["status"] = "running"
         state["current_step"] = "AI analysis running."
         state["progress"] = 100
-        
-        # Isolate runtime persistence here
+
         if db and session_model:
             session_model.ai_runtime_status = "running"
             db.commit()
             db.refresh(session_model)
-            
-        from app.core.logging_config import log_event
-        log_kwargs = {"session_id": session_id}
-        if recruiter_id:
-            log_kwargs["recruiter_id"] = recruiter_id
-        log_event(logger, "analysis_started", **log_kwargs)
+
+        log_event(logger, "analysis_started",
+                  startup_duration_ms=startup_duration_ms,
+                  **log_kwargs)
         return True
 
     @classmethod
