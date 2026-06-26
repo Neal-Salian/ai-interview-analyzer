@@ -41,6 +41,7 @@ async def start(
     session_id: str,
     rtmp_url: str,
     recruiter_id: str = "",
+    job_id: str = "",
 ) -> Dict[str, Any]:
     """
     Start the RTMP consumer for a session.
@@ -103,8 +104,24 @@ async def start(
             # approach to avoid changing the consumer internals.
             container.close()
 
-            # Run the real consumer
-            await consume_stream(session_id, rtmp_url)
+            # Run the real consumer with retry
+            max_retries = 3
+            for attempt in range(1, max_retries + 1):
+                try:
+                    logger.info(f"[consumer] attempt {attempt}/{max_retries} for session {session_id}")
+                    await consume_stream(session_id, rtmp_url, job_id)
+                    logger.info(f"[consumer] stream ended cleanly for session {session_id}")
+                    break
+                except asyncio.CancelledError:
+                    logger.info(f"[consumer] cancelled for session {session_id}")
+                    raise
+                except Exception as e:
+                    logger.warning(f"[consumer] attempt {attempt} failed: {e}")
+                    if attempt < max_retries:
+                        logger.info("[consumer] retrying in 3 seconds...")
+                        await asyncio.sleep(3)
+                    else:
+                        logger.error(f"[consumer] all {max_retries} attempts exhausted for session {session_id}")
 
         except asyncio.CancelledError:
             raise
