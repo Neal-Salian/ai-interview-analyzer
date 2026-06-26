@@ -16,6 +16,7 @@ class RuntimeManager:
     def get_status(cls, session_id: str) -> Dict[str, Any]:
         """Get the current runtime status details for a session."""
         return cls._state.get(session_id, {
+            "status": "not_initialized",
             "progress": 0,
             "current_step": "Not initialized",
             "failed_component": None,
@@ -34,6 +35,7 @@ class RuntimeManager:
     def set_initializing(cls, session_id: str):
         """Reset state and mark as initializing."""
         cls._state[session_id] = {
+            "status": "initializing",
             "progress": 0,
             "current_step": "Starting initialization...",
             "failed_component": None,
@@ -65,6 +67,7 @@ class RuntimeManager:
     def set_ready(cls, session_id: str):
         """Mark initialization as complete and successful."""
         if session_id in cls._state:
+            cls._state[session_id]["status"] = "ready"
             cls._state[session_id]["progress"] = 100
             cls._state[session_id]["current_step"] = "AI engine ready."
             start_time = cls._state[session_id].get("start_time", time.time())
@@ -74,25 +77,37 @@ class RuntimeManager:
     def set_failed(cls, session_id: str, failed_component: str, error_msg: str):
         """Mark initialization as failed with specific component."""
         if session_id in cls._state:
+            cls._state[session_id]["status"] = "failed"
             cls._state[session_id]["failed_component"] = failed_component
             cls._state[session_id]["current_step"] = error_msg
             start_time = cls._state[session_id].get("start_time", time.time())
             cls._state[session_id]["duration_ms"] = int((time.time() - start_time) * 1000)
 
     @classmethod
-    def start_analysis(cls, session_id: str) -> bool:
+    def start_analysis(cls, session_id: str, db=None, session_model=None, recruiter_id: str = None) -> bool:
         """Transition runtime from READY to RUNNING. Returns True on success."""
         state = cls._state.get(session_id)
         if not state:
             return False
         # Only allow transition from ready
-        current_step = state.get("current_step", "")
-        if current_step != "AI engine ready.":
+        if state.get("status") != "ready":
             return False
+            
+        state["status"] = "running"
         state["current_step"] = "AI analysis running."
         state["progress"] = 100
+        
+        # Isolate runtime persistence here
+        if db and session_model:
+            session_model.ai_runtime_status = "running"
+            db.commit()
+            db.refresh(session_model)
+            
         from app.core.logging_config import log_event
-        log_event(logger, "analysis_started", session_id=session_id)
+        log_kwargs = {"session_id": session_id}
+        if recruiter_id:
+            log_kwargs["recruiter_id"] = recruiter_id
+        log_event(logger, "analysis_started", **log_kwargs)
         return True
 
     @classmethod
