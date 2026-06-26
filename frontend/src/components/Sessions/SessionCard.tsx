@@ -13,9 +13,10 @@ interface SessionCardProps {
     onJoin: (e: React.MouseEvent) => void;
     onViewReport: (e: React.MouseEvent) => void;
     onStartZoom?: (e: React.MouseEvent) => void;
+    runtimeStatus?: string;
 }
 
-export function SessionCard({ session, onClick, onStart, onEnd, onJoin, onViewReport, onStartZoom }: SessionCardProps) {
+export function SessionCard({ session, onClick, onStart, onEnd, onJoin, onViewReport, onStartZoom, runtimeStatus }: SessionCardProps) {
     const [panelCount, setPanelCount] = useState<number | null>(null);
 
     useEffect(() => {
@@ -67,7 +68,14 @@ export function SessionCard({ session, onClick, onStart, onEnd, onJoin, onViewRe
                         </div>
                     </div>
                 </div>
-                <StatusBadge status={session.status} />
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+                    <StatusBadge status={session.status} />
+                    {runtimeStatus === 'not_initialized' && <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-secondary)' }}>⚪ Waiting for Meeting</div>}
+                    {(runtimeStatus === 'initializing' || runtimeStatus === 'starting_rtmp') && <div style={{ fontSize: '12px', fontWeight: 500, color: '#f59e0b' }}>🟡 Preparing AI...</div>}
+                    {runtimeStatus === 'ready' && <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--success)' }}>🟢 AI Ready</div>}
+                    {runtimeStatus === 'running' && <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--success)' }}>🟢 AI Running</div>}
+                    {runtimeStatus === 'failed' && <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--danger)' }}>🔴 AI Failed</div>}
+                </div>
             </div>
 
             {/* Card Body — Structured Metadata */}
@@ -161,10 +169,11 @@ export function SessionCard({ session, onClick, onStart, onEnd, onJoin, onViewRe
                             </button>
                         )}
                         <button
-                            className="session-card__action session-card__action--secondary"
-                            onClick={(e) => handleActionClick(e, onStart)}
+                            className={`session-card__action ${runtimeStatus === 'ready' ? 'session-card__action--secondary' : 'session-card__action--disabled'}`}
+                            onClick={(e) => runtimeStatus === 'ready' && handleActionClick(e, onStart)}
                             aria-label="Start session"
-                            style={{ flex: 2 }}
+                            style={{ flex: 2, opacity: runtimeStatus === 'ready' ? 1 : 0.6, cursor: runtimeStatus === 'ready' ? 'pointer' : 'not-allowed' }}
+                            disabled={runtimeStatus !== 'ready'}
                         >
                             <span className="material-symbols-outlined" aria-hidden="true">play_circle</span>
                             Start AI Analysis
