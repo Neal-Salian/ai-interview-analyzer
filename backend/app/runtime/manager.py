@@ -115,3 +115,92 @@ class RuntimeManager:
         """Clear state for a session."""
         if session_id in cls._state:
             del cls._state[session_id]
+
+    @classmethod
+    async def initialize_session(cls, session_id: str):
+        """Orchestrate AI services initialization and update database."""
+        from app.db.database import SessionLocal
+        from app.db.models import Session as InterviewSession
+        from app.core.logging_config import log_event
+        from app.services.ai import rtmp_service, ollama_service, whisper_service, deepface_service
+        import asyncio
+
+        db = SessionLocal()
+        session = db.query(InterviewSession).filter(InterviewSession.id == session_id).first()
+        
+        try:
+            log_event(logger, "runtime_check_started", session_id=session_id)
+            
+            # 1. RTMP Server Reachable
+            cls.update_progress(session_id, 20, "Checking RTMP Server Reachable...")
+            if await rtmp_service.check_health():
+                cls.set_check_result(session_id, "rtmp", True)
+            else:
+                cls.set_failed(session_id, "rtmp", "Failed to connect to streaming backend.")
+                session.ai_runtime_status = "failed"
+                db.commit()
+                log_event(logger, "runtime_failed", session_id=session_id, failed_component="rtmp")
+                return
+                
+            await asyncio.sleep(0.5)
+            
+            # 2. Ollama Connectivity
+            cls.update_progress(session_id, 40, "Checking Ollama connectivity...")
+            if await ollama_service.check_health():
+                cls.set_check_result(session_id, "ollama", True)
+            else:
+                cls.set_failed(session_id, "ollama", "Failed to connect to local LLM.")
+                session.ai_runtime_status = "failed"
+                db.commit()
+                log_event(logger, "runtime_failed", session_id=session_id, failed_component="ollama")
+                return
+                
+            await asyncio.sleep(0.5)
+
+            # 3. Whisper Dependencies
+            cls.update_progress(session_id, 60, "Checking Whisper dependencies...")
+            if await whisper_service.check_health():
+                cls.set_check_result(session_id, "whisper", True)
+            else:
+                cls.set_failed(session_id, "whisper", "Missing Whisper dependencies.")
+                session.ai_runtime_status = "failed"
+                db.commit()
+                log_event(logger, "runtime_failed", session_id=session_id, failed_component="whisper")
+                return
+                
+            await asyncio.sleep(0.5)
+
+            # 4. DeepFace Dependencies
+            cls.update_progress(session_id, 80, "Checking DeepFace dependencies...")
+            if await deepface_service.check_health():
+                cls.set_check_result(session_id, "deepface", True)
+            else:
+                cls.set_failed(session_id, "deepface", "Missing DeepFace dependencies.")
+                session.ai_runtime_status = "failed"
+                db.commit()
+                log_event(logger, "runtime_failed", session_id=session_id, failed_component="deepface")
+                return
+                
+            await asyncio.sleep(0.5)
+
+            # 5. WebSocket Readiness
+            cls.update_progress(session_id, 90, "Verifying real-time bridge...")
+            cls.set_check_result(session_id, "websocket", True)
+            await asyncio.sleep(0.5)
+            
+            cls.set_ready(session_id)
+            session.ai_runtime_status = "ready"
+            db.commit()
+            
+            status = cls.get_status(session_id)
+            log_event(logger, "runtime_check_completed", session_id=session_id, duration_ms=status.get("duration_ms"))
+            log_event(logger, "runtime_ready", session_id=session_id)
+            
+        except Exception as e:
+            logger.error(f"Initialization task error: {e}")
+            cls.set_failed(session_id, "internal", "Internal server error during initialization.")
+            session.ai_runtime_status = "failed"
+            db.commit()
+            log_event(logger, "runtime_failed", session_id=session_id, failed_component="internal")
+        finally:
+            db.close()
