@@ -4,6 +4,7 @@ import { PanelSection } from './PanelSection';
 import { AvatarInitials } from './AvatarInitials';
 import { StatusBadge } from './StatusBadge';
 import { formatSessionDate } from './FormatDate';
+import { useRuntimeStatus } from '../../hooks/useRuntimeStatus';
 
 interface SessionDetailsDrawerProps {
     session: EnhancedSession | null;
@@ -32,6 +33,11 @@ export function SessionDetailsDrawer({ session, isOpen, onClose, onStart, onEnd,
         interview_type: '',
         notes: ''
     });
+
+    const { aiRuntime, aiRuntimeDetails, retryInitialization } = useRuntimeStatus(
+        session?.session_id, 
+        isOpen && ['scheduled', 'active'].includes(session?.status || '')
+    );
 
     // Reset confirmation state when drawer closes or session changes
     useEffect(() => {
@@ -246,6 +252,100 @@ export function SessionDetailsDrawer({ session, isOpen, onClose, onStart, onEnd,
                         </div>
                     )}
 
+                    {/* AI Engine Status (only for scheduled/active) */}
+                    {['scheduled', 'active'].includes(session.status) && (
+                        <div style={{
+                            display: 'flex', flexDirection: 'column', gap: '10px', padding: '14px 16px',
+                            backgroundColor: 'var(--bg-surface-high)', borderRadius: '12px',
+                            border: '1px solid var(--border)', marginTop: '4px'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+                                <span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--text-secondary)' }} aria-hidden="true">psychology</span>
+                                <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>AI Engine</span>
+                            </div>
+                            
+                            {aiRuntime === 'not_initialized' && (
+                                <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 500, marginBottom: '4px' }}>
+                                        ⚪ Waiting for Meeting
+                                    </div>
+                                    The AI engine will automatically prepare once the Zoom meeting starts.
+                                </div>
+                            )}
+
+                            {(aiRuntime === 'initializing' || aiRuntime === 'starting_rtmp') && (
+                                <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 500, color: '#f59e0b', marginBottom: '8px' }}>
+                                        <span className="material-symbols-outlined" style={{ fontSize: '16px', animation: 'spin 2s linear infinite' }}>sync</span>
+                                        Preparing AI... ({aiRuntimeDetails.progress}%)
+                                    </div>
+                                    <div style={{ marginBottom: '8px', fontStyle: 'italic' }}>
+                                        {aiRuntimeDetails.current_step || 'Connecting components...'}
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            {aiRuntimeDetails.progress >= 25 ? '✓' : (aiRuntimeDetails.progress > 0 ? '⏳' : '○')} RTMP Stream
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            {aiRuntimeDetails.progress >= 50 ? '✓' : (aiRuntimeDetails.progress >= 25 ? '⏳' : '○')} Ollama Engine
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            {aiRuntimeDetails.progress >= 75 ? '✓' : (aiRuntimeDetails.progress >= 50 ? '⏳' : '○')} Whisper Model
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            {aiRuntimeDetails.progress >= 100 ? '✓' : (aiRuntimeDetails.progress >= 75 ? '⏳' : '○')} DeepFace Service
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {aiRuntime === 'ready' && (
+                                <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 500, color: 'var(--success)', marginBottom: '8px' }}>
+                                        🟢 AI Ready
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        <div>✓ RTMP Stream</div>
+                                        <div>✓ Ollama Engine</div>
+                                        <div>✓ Whisper Model</div>
+                                        <div>✓ DeepFace Service</div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {aiRuntime === 'running' && (
+                                <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 500, color: 'var(--success)' }}>
+                                        🟢 AI Analysis Running
+                                    </div>
+                                </div>
+                            )}
+
+                            {aiRuntime === 'failed' && (
+                                <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 500, color: 'var(--danger)', marginBottom: '8px' }}>
+                                        🔴 AI Initialization Failed
+                                    </div>
+                                    <div style={{ marginBottom: '4px' }}>
+                                        <strong>Component:</strong> {aiRuntimeDetails.failed_component || 'Unknown'}
+                                    </div>
+                                    <div style={{ marginBottom: '12px' }}>
+                                        <strong>Reason:</strong> {aiRuntimeDetails.current_step || 'An error occurred during startup.'}
+                                    </div>
+                                    <button 
+                                        onClick={() => retryInitialization()}
+                                        style={{
+                                            padding: '8px 12px', fontSize: '13px', fontWeight: 500, borderRadius: '6px',
+                                            border: '1px solid var(--border)', cursor: 'pointer', background: 'var(--bg-surface)'
+                                        }}
+                                    >
+                                        Retry Initialization
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* Quick Actions based on Status */}
                     <div style={{ marginTop: '4px' }}>
                         {isScheduling ? (
@@ -358,8 +458,9 @@ export function SessionDetailsDrawer({ session, isOpen, onClose, onStart, onEnd,
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                         <button
                                             onClick={onStart}
-                                            className="session-card__action session-card__action--primary"
-                                            style={{ width: '100%', padding: '12px', fontSize: '14px', borderRadius: '10px' }}
+                                            className={`session-card__action ${aiRuntime === 'ready' ? 'session-card__action--primary' : 'session-card__action--disabled'}`}
+                                            style={{ width: '100%', padding: '12px', fontSize: '14px', borderRadius: '10px', opacity: aiRuntime === 'ready' ? 1 : 0.6, cursor: aiRuntime === 'ready' ? 'pointer' : 'not-allowed' }}
+                                            disabled={aiRuntime !== 'ready'}
                                             aria-label="Start this session"
                                         >
                                             <span className="material-symbols-outlined" style={{ fontSize: '20px' }} aria-hidden="true">play_circle</span>
