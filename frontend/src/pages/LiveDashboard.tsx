@@ -347,7 +347,7 @@ export default function LiveDashboard() {
                                         </button>
                                     )}
                                     {aiRuntime === 'running' ? (
-                                        <span style={{ padding: '8px 16px', background: 'rgba(52, 211, 153, 0.1)', color: 'var(--success)', border: '1px solid var(--success)', borderRadius: '6px', fontWeight: 500, fontSize: '13px' }}>● Analysis Active</span>
+                                        <span style={{ padding: '8px 16px', background: 'rgba(52, 211, 153, 0.1)', color: 'var(--success)', border: '1px solid var(--success)', borderRadius: '6px', fontWeight: 500, fontSize: '13px' }}>🟢 AI Analysis Running</span>
                                     ) : (
                                         <button 
                                             onClick={handleStartAnalysis}
