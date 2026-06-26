@@ -44,7 +44,8 @@ export default function LiveDashboard() {
     const [currentSentiment, setCurrentSentiment] = useState<string>('—')
     const [integrityAlerts, setIntegrityAlerts] = useState<{event_type: string, severity: string, details: string, timestamp: string}[]>([])
     const [connected, setConnected] = useState(false)
-    const [sessionInfo, setSessionInfo] = useState<{ candidate: string, job: string, status?: string } | null>(null)
+    const [sessionInfo, setSessionInfo] = useState<{ candidate: string, job: string, status?: string, zoom_join_url?: string } | null>(null)
+    const [aiRuntime, setAiRuntime] = useState<string>('not_initialized')
     const transcriptRef = useRef<HTMLDivElement>(null)
     const wsRef = useRef<WebSocket | null>(null)
 
@@ -72,12 +73,39 @@ export default function LiveDashboard() {
                 setSessionInfo({
                     candidate: res.data.candidate || 'Unknown',
                     job: res.data.job || 'No role specified',
-                    status: res.data.status
+                    status: res.data.status,
+                    zoom_join_url: res.data.zoom_join_url
                 })
             })
             .catch(err => console.error('Failed to fetch session info', err))
             .finally(() => setLoading(false))
     }, [sessionId])
+
+    // Poll runtime status
+    useEffect(() => {
+        if (!sessionId || sessionInfo?.status !== 'active') return
+        
+        const pollRuntime = async () => {
+            try {
+                const res = await client.get(`/sessions/${sessionId}/runtime-status`)
+                setAiRuntime(res.data.runtime)
+            } catch (e) {
+                console.error('Failed to fetch runtime status', e)
+            }
+        }
+        
+        pollRuntime()
+        const interval = setInterval(pollRuntime, 3000)
+        return () => clearInterval(interval)
+    }, [sessionId, sessionInfo?.status])
+
+    const handleRetryInitialization = async () => {
+        try {
+            await client.post(`/sessions/${sessionId}/initialize-ai`)
+        } catch (e) {
+            console.error('Failed to retry initialization', e)
+        }
+    }
 
     // WebSocket
     useEffect(() => {
@@ -265,6 +293,53 @@ export default function LiveDashboard() {
                     </div>
                 </div>
 
+                {sessionInfo?.status === 'scheduled' ? (
+                    <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '64px', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)' }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: '48px', color: 'var(--text-secondary)', marginBottom: '16px' }}>event</span>
+                        <h2 style={{ fontSize: '24px', fontWeight: 600, marginBottom: '8px' }}>Interview has not started.</h2>
+                        <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>Wait for the scheduled time to begin the session.</p>
+                        {sessionInfo.zoom_join_url && (
+                            <a href={sessionInfo.zoom_join_url} target="_blank" rel="noopener noreferrer" style={{ padding: '12px 24px', background: 'linear-gradient(135deg, #2d8cff 0%, #0b5fcc 100%)', color: '#fff', borderRadius: '8px', textDecoration: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span className="material-symbols-outlined">videocam</span>
+                                Join Zoom
+                            </a>
+                        )}
+                    </div>
+                ) : (
+                    <>
+                        {/* Zoom Live & AI Runtime Status Bar */}
+                        <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '16px', marginBottom: '8px' }}>
+                            <div style={{ flex: 1, padding: '16px', background: 'rgba(45, 140, 255, 0.05)', border: '1px solid rgba(45, 140, 255, 0.2)', borderRadius: 'var(--radius)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <span className="material-symbols-outlined" style={{ color: '#2d8cff', fontSize: '24px' }}>videocam</span>
+                                <div>
+                                    <div style={{ fontWeight: 600, color: '#2d8cff' }}>Zoom Meeting Live</div>
+                                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Audio & Video streams connected</div>
+                                </div>
+                            </div>
+                            
+                            <div style={{ flex: 2, padding: '16px', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    {aiRuntime === 'not_initialized' && <><span className="material-symbols-outlined" style={{ color: 'var(--text-secondary)' }}>power_settings_new</span><div><div style={{ fontWeight: 600 }}>AI Engine Not Initialized</div></div></>}
+                                    {aiRuntime === 'initializing' && <><span className="material-symbols-outlined" style={{ color: '#f59e0b', animation: 'spin 2s linear infinite' }}>sync</span><div><div style={{ fontWeight: 600, color: '#f59e0b' }}>AI Engine Initializing...</div><div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Loading interview engine...</div></div></>}
+                                    {(aiRuntime === 'ready' || aiRuntime === 'running') && <><span className="material-symbols-outlined" style={{ color: 'var(--success)' }}>check_circle</span><div><div style={{ fontWeight: 600, color: 'var(--success)' }}>AI Engine Ready</div><div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Ready for analysis</div></div></>}
+                                    {aiRuntime === 'failed' && <><span className="material-symbols-outlined" style={{ color: 'var(--danger)' }}>error</span><div><div style={{ fontWeight: 600, color: 'var(--danger)' }}>AI Engine Initialization Failed</div><div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Unable to connect to required services</div></div></>}
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    {aiRuntime === 'failed' && (
+                                        <button onClick={handleRetryInitialization} style={{ padding: '8px 16px', background: 'transparent', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}>
+                                            Retry AI Initialization
+                                        </button>
+                                    )}
+                                    <button 
+                                        disabled={aiRuntime !== 'ready'} 
+                                        style={{ padding: '8px 16px', background: aiRuntime === 'ready' ? 'var(--accent)' : 'var(--bg)', color: aiRuntime === 'ready' ? '#fff' : 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: '6px', cursor: aiRuntime === 'ready' ? 'pointer' : 'not-allowed', fontWeight: 500, opacity: aiRuntime === 'ready' ? 1 : 0.6 }}
+                                    >
+                                        Start AI Analysis
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
                 {/* Left column — emotion + chart */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
@@ -273,6 +348,11 @@ export default function LiveDashboard() {
                         <div style={{ fontSize: '14px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', fontWeight: 700, fontFamily: 'var(--font-heading)' }}>
                             Live Vitals
                         </div>
+                        {aiRuntime !== 'running' ? (
+                            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px', background: 'var(--bg)', borderRadius: 'var(--radius)' }}>
+                                Vitals will appear after AI Analysis starts.
+                            </div>
+                        ) : (
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                             <div>
                                 <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Emotion</div>
@@ -296,6 +376,7 @@ export default function LiveDashboard() {
                                 </div>
                             </div>
                         </div>
+                        )}
                     </div>
 
                     {/* Emotion chart */}
@@ -303,7 +384,12 @@ export default function LiveDashboard() {
                         <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px', fontFamily: 'var(--font-heading)' }}>
                             Emotions Over Time
                         </div>
-                        {chartData.length === 0 ? (
+                        {aiRuntime !== 'running' ? (
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1px dashed var(--border)', borderRadius: 'var(--radius)', padding: '2rem', minHeight: '150px', marginTop: '10px' }}>
+                                <span className="material-symbols-outlined" style={{ color: 'var(--text-secondary)', fontSize: '24px', marginBottom: '8px' }}>monitoring</span>
+                                <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Waiting for AI analysis...</span>
+                            </div>
+                        ) : chartData.length === 0 ? (
                             <div style={{
                                 flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                                 border: '1px dashed var(--border)', borderRadius: 'var(--radius)', padding: '2rem', minHeight: '150px', marginTop: '10px'
@@ -331,6 +417,11 @@ export default function LiveDashboard() {
                         <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', fontFamily: 'var(--font-heading)' }}>
                             Suggested Questions
                         </div>
+                        {aiRuntime !== 'running' ? (
+                            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px', background: 'var(--bg)', borderRadius: 'var(--radius)' }}>
+                                Questions will appear after AI Analysis starts.
+                            </div>
+                        ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                             {questions.map(q => (
                                 <div key={q.id} style={{
@@ -369,6 +460,7 @@ export default function LiveDashboard() {
                                 </div>
                             ))}
                         </div>
+                        )}
                     </div>
                 </div>
 
@@ -397,6 +489,12 @@ export default function LiveDashboard() {
                         <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', fontFamily: 'var(--font-heading)' }}>
                             Live Transcript
                         </div>
+                        {aiRuntime !== 'running' ? (
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1px dashed var(--border)', borderRadius: 'var(--radius)', padding: '2rem', marginTop: '10px' }}>
+                                <span className="material-symbols-outlined" style={{ color: 'var(--text-secondary)', fontSize: '24px', marginBottom: '8px' }}>forum</span>
+                                <span style={{ color: 'var(--text-secondary)', fontSize: '13px', textAlign: 'center' }}>Waiting for AI analysis...</span>
+                            </div>
+                        ) : (
                     <div
                         ref={transcriptRef}
                         style={{ height: '600px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}
@@ -419,8 +517,12 @@ export default function LiveDashboard() {
                             </div>
                         ))}
                     </div>
+                        )}
                     </div>
                 </div>
+
+                    </>
+                )}
 
             </div>
             </PageTransition>
