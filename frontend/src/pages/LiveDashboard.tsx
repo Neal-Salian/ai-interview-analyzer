@@ -6,6 +6,7 @@ import type { EmotionFrame, TranscriptChunk, SuggestedQuestion, WSMessage } from
 import client from '../api/client'
 import PageTransition from '../components/PageTransition';
 import { SkeletonCard, SkeletonText } from '../components/Skeleton';
+import { useRuntimeStatus } from '../hooks/useRuntimeStatus';
 
 const EMOTION_COLOR: Record<string, string> = {
     happy: '#34d399',
@@ -45,8 +46,8 @@ export default function LiveDashboard() {
     const [integrityAlerts, setIntegrityAlerts] = useState<{event_type: string, severity: string, details: string, timestamp: string}[]>([])
     const [connected, setConnected] = useState(false)
     const [sessionInfo, setSessionInfo] = useState<{ candidate: string, job: string, status?: string, zoom_join_url?: string } | null>(null)
-    const [aiRuntime, setAiRuntime] = useState<string>('not_initialized')
-    const [aiRuntimeDetails, setAiRuntimeDetails] = useState<{ progress: number, current_step: string, failed_component: string | null, duration_ms: number | null }>({ progress: 0, current_step: '', failed_component: null, duration_ms: null })
+    
+    const { aiRuntime, aiRuntimeDetails, retryInitialization } = useRuntimeStatus(sessionId, sessionInfo?.status === 'active')
     const transcriptRef = useRef<HTMLDivElement>(null)
     const wsRef = useRef<WebSocket | null>(null)
 
@@ -82,36 +83,8 @@ export default function LiveDashboard() {
             .finally(() => setLoading(false))
     }, [sessionId])
 
-    // Poll runtime status
-    useEffect(() => {
-        if (!sessionId || sessionInfo?.status !== 'active') return
-        
-        const pollRuntime = async () => {
-            try {
-                const res = await client.get(`/sessions/${sessionId}/runtime-status`)
-                setAiRuntime(res.data.runtime)
-                setAiRuntimeDetails({
-                    progress: res.data.progress,
-                    current_step: res.data.current_step,
-                    failed_component: res.data.failed_component,
-                    duration_ms: res.data.duration_ms
-                })
-            } catch (e) {
-                console.error('Failed to fetch runtime status', e)
-            }
-        }
-        
-        pollRuntime()
-        const interval = setInterval(pollRuntime, 3000)
-        return () => clearInterval(interval)
-    }, [sessionId, sessionInfo?.status])
-
     const handleRetryInitialization = async () => {
-        try {
-            await client.post(`/sessions/${sessionId}/initialize-ai`)
-        } catch (e) {
-            console.error('Failed to retry initialization', e)
-        }
+        await retryInitialization();
     }
 
     const handleStartAnalysis = async () => {
