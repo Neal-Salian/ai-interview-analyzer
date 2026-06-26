@@ -97,6 +97,7 @@ class Session(Base):
     zoom_start_url = Column(String, nullable=True)
     zoom_password = Column(String, nullable=True)
     status = Column(String, default="active")
+    ai_runtime_status = Column(String, default="not_initialized")
     started_at = Column(DateTime, default=datetime.datetime.utcnow)
     ended_at = Column(DateTime, nullable=True)
     scheduled_at = Column(DateTime, nullable=True)
