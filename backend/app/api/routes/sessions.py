@@ -588,3 +588,35 @@ def initialize_ai(
         "runtime": session.ai_runtime_status,
         "message": "AI engine initialization started."
     }
+
+
+@router.post("/sessions/{session_id}/start-analysis")
+def start_analysis(
+    db: DBSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+    session: InterviewSession = Depends(get_owned_session),
+):
+    log_event(logger, "analysis_start_requested",
+              session_id=str(session.id), recruiter_id=str(current_user.id))
+
+    if session.status != "active":
+        raise HTTPException(status_code=400, detail="Session must be active (Meeting Live) to start analysis.")
+
+    runtime = session.ai_runtime_status or "not_initialized"
+    if runtime != "ready":
+        raise HTTPException(
+            status_code=400,
+            detail=f"AI runtime must be READY to start analysis. Current state: {runtime}",
+        )
+
+    if not RuntimeManager.start_analysis(str(session.id)):
+        raise HTTPException(status_code=400, detail="Failed to transition runtime to RUNNING.")
+
+    session.ai_runtime_status = "running"
+    db.commit()
+    db.refresh(session)
+
+    return {
+        "runtime": session.ai_runtime_status,
+        "message": "AI analysis started."
+    }
