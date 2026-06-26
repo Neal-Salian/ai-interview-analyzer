@@ -1,5 +1,8 @@
 import time
+import logging
 from typing import Dict, Any, Optional
+
+logger = logging.getLogger(__name__)
 
 class RuntimeManager:
     """
@@ -75,6 +78,22 @@ class RuntimeManager:
             cls._state[session_id]["current_step"] = error_msg
             start_time = cls._state[session_id].get("start_time", time.time())
             cls._state[session_id]["duration_ms"] = int((time.time() - start_time) * 1000)
+
+    @classmethod
+    def start_analysis(cls, session_id: str) -> bool:
+        """Transition runtime from READY to RUNNING. Returns True on success."""
+        state = cls._state.get(session_id)
+        if not state:
+            return False
+        # Only allow transition from ready
+        current_step = state.get("current_step", "")
+        if current_step != "AI engine ready.":
+            return False
+        state["current_step"] = "AI analysis running."
+        state["progress"] = 100
+        from app.core.logging_config import log_event
+        log_event(logger, "analysis_started", session_id=session_id)
+        return True
 
     @classmethod
     def clear(cls, session_id: str):
