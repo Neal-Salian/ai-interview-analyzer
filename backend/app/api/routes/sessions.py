@@ -439,3 +439,40 @@ async def delete_session(
     
     logger.info(f"[sessions] deleted draft session {session.id}")
     return {"status": "deleted"}
+
+
+@router.get("/sessions/{session_id}/runtime-status")
+def get_session_runtime_status(
+    session: InterviewSession = Depends(get_owned_session),
+):
+    runtime = session.ai_runtime_status or "not_initialized"
+    return {
+        "runtime": runtime,
+        "checks": {
+            "rtmp": True,
+            "ollama": True,
+            "whisper": True,
+            "deepface": True,
+            "websocket": True
+        },
+        "message": f"AI engine {runtime}."
+    }
+
+
+@router.post("/sessions/{session_id}/initialize-ai")
+def initialize_ai(
+    db: DBSession = Depends(get_db),
+    session: InterviewSession = Depends(get_owned_session),
+):
+    # Phase 1 mock: directly set to ready
+    session.ai_runtime_status = "ready"
+    db.commit()
+    db.refresh(session)
+    
+    logger.info(f"[sessions] mock initialized AI runtime for session {session.id}")
+    log_event(logger, "runtime_ready", session_id=str(session.id))
+    
+    return {
+        "runtime": session.ai_runtime_status,
+        "message": "AI engine initialized."
+    }
