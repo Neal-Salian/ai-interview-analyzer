@@ -609,12 +609,13 @@ def start_analysis(
             detail=f"AI runtime must be READY to start analysis. Current state: {runtime}",
         )
 
-    if not RuntimeManager.start_analysis(str(session.id)):
+    if not RuntimeManager.start_analysis(
+        str(session.id), 
+        db=db, 
+        session_model=session, 
+        recruiter_id=str(current_user.id)
+    ):
         raise HTTPException(status_code=400, detail="Failed to transition runtime to RUNNING.")
-
-    session.ai_runtime_status = "running"
-    db.commit()
-    db.refresh(session)
 
     return {
         "runtime": session.ai_runtime_status,
