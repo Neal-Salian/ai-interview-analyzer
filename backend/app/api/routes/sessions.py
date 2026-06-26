@@ -315,6 +315,10 @@ async def schedule_session(
     scheduled_at = datetime.datetime.fromisoformat(payload.scheduled_at)
     if scheduled_at.tzinfo is not None:
         scheduled_at = scheduled_at.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    else:
+        import zoneinfo
+        tz = zoneinfo.ZoneInfo("Asia/Kolkata")
+        scheduled_at = scheduled_at.replace(tzinfo=tz).astimezone(datetime.timezone.utc).replace(tzinfo=None)
     
     # We allow minor leeway (e.g., 5 minutes) for scheduling if needed, or strict 'in the past' check.
     if scheduled_at < datetime.datetime.utcnow() - datetime.timedelta(minutes=5):
