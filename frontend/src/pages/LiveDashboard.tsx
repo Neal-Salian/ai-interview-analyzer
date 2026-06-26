@@ -46,6 +46,7 @@ export default function LiveDashboard() {
     const [connected, setConnected] = useState(false)
     const [sessionInfo, setSessionInfo] = useState<{ candidate: string, job: string, status?: string, zoom_join_url?: string } | null>(null)
     const [aiRuntime, setAiRuntime] = useState<string>('not_initialized')
+    const [aiRuntimeDetails, setAiRuntimeDetails] = useState<{ progress: number, current_step: string, failed_component: string | null, duration_ms: number | null }>({ progress: 0, current_step: '', failed_component: null, duration_ms: null })
     const transcriptRef = useRef<HTMLDivElement>(null)
     const wsRef = useRef<WebSocket | null>(null)
 
@@ -89,6 +90,12 @@ export default function LiveDashboard() {
             try {
                 const res = await client.get(`/sessions/${sessionId}/runtime-status`)
                 setAiRuntime(res.data.runtime)
+                setAiRuntimeDetails({
+                    progress: res.data.progress,
+                    current_step: res.data.current_step,
+                    failed_component: res.data.failed_component,
+                    duration_ms: res.data.duration_ms
+                })
             } catch (e) {
                 console.error('Failed to fetch runtime status', e)
             }
@@ -320,9 +327,9 @@ export default function LiveDashboard() {
                             <div style={{ flex: 2, padding: '16px', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                     {aiRuntime === 'not_initialized' && <><span className="material-symbols-outlined" style={{ color: 'var(--text-secondary)' }}>power_settings_new</span><div><div style={{ fontWeight: 600 }}>AI Engine Not Initialized</div></div></>}
-                                    {aiRuntime === 'initializing' && <><span className="material-symbols-outlined" style={{ color: '#f59e0b', animation: 'spin 2s linear infinite' }}>sync</span><div><div style={{ fontWeight: 600, color: '#f59e0b' }}>AI Engine Initializing...</div><div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Loading interview engine...</div></div></>}
-                                    {(aiRuntime === 'ready' || aiRuntime === 'running') && <><span className="material-symbols-outlined" style={{ color: 'var(--success)' }}>check_circle</span><div><div style={{ fontWeight: 600, color: 'var(--success)' }}>AI Engine Ready</div><div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Ready for analysis</div></div></>}
-                                    {aiRuntime === 'failed' && <><span className="material-symbols-outlined" style={{ color: 'var(--danger)' }}>error</span><div><div style={{ fontWeight: 600, color: 'var(--danger)' }}>AI Engine Initialization Failed</div><div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Unable to connect to required services</div></div></>}
+                                    {aiRuntime === 'initializing' && <><span className="material-symbols-outlined" style={{ color: '#f59e0b', animation: 'spin 2s linear infinite' }}>sync</span><div><div style={{ fontWeight: 600, color: '#f59e0b' }}>AI Engine Initializing... {aiRuntimeDetails.progress}%</div><div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{aiRuntimeDetails.current_step || 'Loading interview engine...'}</div></div></>}
+                                    {(aiRuntime === 'ready' || aiRuntime === 'running') && <><span className="material-symbols-outlined" style={{ color: 'var(--success)' }}>check_circle</span><div><div style={{ fontWeight: 600, color: 'var(--success)' }}>AI Engine Ready {aiRuntimeDetails.duration_ms ? `(${aiRuntimeDetails.duration_ms}ms)` : ''}</div><div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Ready for analysis</div></div></>}
+                                    {aiRuntime === 'failed' && <><span className="material-symbols-outlined" style={{ color: 'var(--danger)' }}>error</span><div><div style={{ fontWeight: 600, color: 'var(--danger)' }}>AI Engine Initialization Failed</div><div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{aiRuntimeDetails.current_step || `Failed at component: ${aiRuntimeDetails.failed_component}`}</div></div></>}
                                 </div>
                                 <div style={{ display: 'flex', gap: '8px' }}>
                                     {aiRuntime === 'failed' && (
