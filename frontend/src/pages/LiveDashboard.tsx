@@ -114,6 +114,14 @@ export default function LiveDashboard() {
         }
     }
 
+    const handleStartAnalysis = async () => {
+        try {
+            await client.post(`/sessions/${sessionId}/start-analysis`)
+        } catch (e) {
+            console.error('Failed to start analysis', e)
+        }
+    }
+
     // WebSocket
     useEffect(() => {
         if (!sessionId) return
@@ -328,7 +336,8 @@ export default function LiveDashboard() {
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                     {aiRuntime === 'not_initialized' && <><span className="material-symbols-outlined" style={{ color: 'var(--text-secondary)' }}>power_settings_new</span><div><div style={{ fontWeight: 600 }}>AI Engine Not Initialized</div></div></>}
                                     {aiRuntime === 'initializing' && <><span className="material-symbols-outlined" style={{ color: '#f59e0b', animation: 'spin 2s linear infinite' }}>sync</span><div><div style={{ fontWeight: 600, color: '#f59e0b' }}>AI Engine Initializing... {aiRuntimeDetails.progress}%</div><div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{aiRuntimeDetails.current_step || 'Loading interview engine...'}</div></div></>}
-                                    {(aiRuntime === 'ready' || aiRuntime === 'running') && <><span className="material-symbols-outlined" style={{ color: 'var(--success)' }}>check_circle</span><div><div style={{ fontWeight: 600, color: 'var(--success)' }}>AI Engine Ready {aiRuntimeDetails.duration_ms ? `(${aiRuntimeDetails.duration_ms}ms)` : ''}</div><div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Ready for analysis</div></div></>}
+                                    {aiRuntime === 'ready' && <><span className="material-symbols-outlined" style={{ color: 'var(--success)' }}>check_circle</span><div><div style={{ fontWeight: 600, color: 'var(--success)' }}>AI Engine Ready {aiRuntimeDetails.duration_ms ? `(${aiRuntimeDetails.duration_ms}ms)` : ''}</div><div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Ready for analysis</div></div></>}
+                                    {aiRuntime === 'running' && <><span className="material-symbols-outlined" style={{ color: 'var(--success)' }}>play_circle</span><div><div style={{ fontWeight: 600, color: 'var(--success)' }}>AI Analysis Running</div><div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Live analysis active</div></div></>}
                                     {aiRuntime === 'failed' && <><span className="material-symbols-outlined" style={{ color: 'var(--danger)' }}>error</span><div><div style={{ fontWeight: 600, color: 'var(--danger)' }}>AI Engine Initialization Failed</div><div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{aiRuntimeDetails.current_step || `Failed at component: ${aiRuntimeDetails.failed_component}`}</div></div></>}
                                 </div>
                                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -337,12 +346,17 @@ export default function LiveDashboard() {
                                             Retry AI Initialization
                                         </button>
                                     )}
-                                    <button 
-                                        disabled={aiRuntime !== 'ready'} 
-                                        style={{ padding: '8px 16px', background: aiRuntime === 'ready' ? 'var(--accent)' : 'var(--bg)', color: aiRuntime === 'ready' ? '#fff' : 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: '6px', cursor: aiRuntime === 'ready' ? 'pointer' : 'not-allowed', fontWeight: 500, opacity: aiRuntime === 'ready' ? 1 : 0.6 }}
-                                    >
-                                        Start AI Analysis
-                                    </button>
+                                    {aiRuntime === 'running' ? (
+                                        <span style={{ padding: '8px 16px', background: 'rgba(52, 211, 153, 0.1)', color: 'var(--success)', border: '1px solid var(--success)', borderRadius: '6px', fontWeight: 500, fontSize: '13px' }}>● Analysis Active</span>
+                                    ) : (
+                                        <button 
+                                            onClick={handleStartAnalysis}
+                                            disabled={aiRuntime !== 'ready'} 
+                                            style={{ padding: '8px 16px', background: aiRuntime === 'ready' ? 'var(--accent)' : 'var(--bg)', color: aiRuntime === 'ready' ? '#fff' : 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: '6px', cursor: aiRuntime === 'ready' ? 'pointer' : 'not-allowed', fontWeight: 500, opacity: aiRuntime === 'ready' ? 1 : 0.6 }}
+                                        >
+                                            Start AI Analysis
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         </div>
