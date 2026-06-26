@@ -43,6 +43,7 @@ export default function SessionsPage() {
     const navigate = useNavigate();
     const { role } = useAuth();
     const [adminStats, setAdminStats] = useState<AdminStats | null>(null);
+    const [runtimeStatuses, setRuntimeStatuses] = useState<Record<string, string>>({});
 
     const fetchSessions = async () => {
         try {
@@ -93,6 +94,39 @@ export default function SessionsPage() {
             fetchAdminStats();
         }
     }, [role]);
+
+    useEffect(() => {
+        const now = new Date();
+        const thirtyMinsFromNow = new Date(now.getTime() + 30 * 60000);
+        
+        const relevantSessions = sessions.filter(s => {
+            if (s.status === 'active') return true;
+            if (s.status === 'scheduled' && s.scheduled_at) {
+                const scheduledTime = new Date(s.scheduled_at);
+                return scheduledTime <= thirtyMinsFromNow;
+            }
+            return false;
+        });
+
+        if (relevantSessions.length === 0) return;
+
+        const fetchStatuses = async () => {
+            const statuses: Record<string, string> = {};
+            await Promise.allSettled(relevantSessions.map(async (s) => {
+                try {
+                    const res = await client.get(`/sessions/${s.session_id}/runtime-status`);
+                    statuses[s.session_id] = res.data.runtime;
+                } catch (e) {
+                    // Ignore error
+                }
+            }));
+            setRuntimeStatuses(prev => ({ ...prev, ...statuses }));
+        };
+
+        fetchStatuses();
+        const interval = setInterval(fetchStatuses, 5000); // Polling every 5s for cards
+        return () => clearInterval(interval);
+    }, [sessions]);
 
     const handleStartSession = async (sessionId: string) => {
         await client.patch(`/sessions/${sessionId}/start`);
@@ -360,6 +394,7 @@ export default function SessionsPage() {
                                 <SessionCard
                                     key={session.session_id}
                                     session={session}
+                                    runtimeStatus={runtimeStatuses[session.session_id]}
                                     onClick={() => { setSelectedSession(session); setIsDrawerOpen(true); }}
                                     onStart={() => handleStartSession(session.session_id)}
                                     onEnd={() => handleEndSession(session.session_id)}
