@@ -18,7 +18,8 @@ import CandidateDetailsPage from './pages/CandidateDetailsPage'
 
 import UsersPage from './pages/admin/UsersPage'
 import AuditLogsPage from './pages/admin/AuditLogsPage'
-import SettingsPage from './pages/admin/SettingsPage'
+import AdminSettingsPage from './pages/admin/SettingsPage'
+import SettingsPage from './pages/SettingsPage'
 
 // Inside <Routes> after /login:
 
@@ -56,6 +57,9 @@ export default function App() {
             <Route path="/history" element={
               <ProtectedRoute><InterviewHistoryPage /></ProtectedRoute>
             } />
+            <Route path="/settings" element={
+              <ProtectedRoute><SettingsPage /></ProtectedRoute>
+            } />
             <Route path="/jobs" element={
               <ProtectedRoute><JobsPage /></ProtectedRoute>
             } />
@@ -71,7 +75,7 @@ export default function App() {
               <ProtectedRoute allowedRoles={['ADMIN']}><AuditLogsPage /></ProtectedRoute>
             } />
             <Route path="/admin/settings" element={
-              <ProtectedRoute allowedRoles={['ADMIN']}><SettingsPage /></ProtectedRoute>
+              <ProtectedRoute allowedRoles={['ADMIN']}><AdminSettingsPage /></ProtectedRoute>
             } />
 
             {/* Default redirect */}

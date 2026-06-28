@@ -39,6 +39,7 @@ export default function Sidebar() {
                     <NavItem path="/candidates" icon="people" label="Candidates" />
                     <NavItem path="/jobs" icon="work" label="Jobs" />
                     <NavItem path="/history" icon="history" label="History" />
+                    <NavItem path="/settings" icon="settings" label="Settings" />
                     
                     {role === 'ADMIN' && (
                         <>
