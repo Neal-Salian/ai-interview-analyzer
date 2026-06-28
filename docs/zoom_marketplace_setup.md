@@ -24,7 +24,18 @@ Under the **OAuth Information** section, set the following:
 
 (Replace `<YOUR_BACKEND_DOMAIN>` with your actual production backend URL, matching the `BACKEND_URL` in your `.env`.)
 
-## 4. Scopes
+## 4. Encryption Key
+
+The application securely encrypts Zoom tokens at rest. You must generate a URL-safe base64-encoded 32-byte key. 
+You can generate one using Python:
+```python
+from cryptography.fernet import Fernet
+print(Fernet.generate_key().decode())
+```
+Add this key to your backend `.env` as:
+- `ZOOM_TOKEN_ENCRYPTION_KEY`
+
+## 5. Scopes
 
 The application requires the following scopes to function correctly:
 
@@ -32,7 +43,7 @@ The application requires the following scopes to function correctly:
 - `meeting:read` (Allows the app to read meeting details)
 - `user:read` (Allows the app to fetch the user's `zoom_user_id` and `zoom_email` during the OAuth callback)
 
-## 5. Feature: Event Subscriptions (Webhooks)
+## 6. Feature: Event Subscriptions (Webhooks)
 
 The application relies on webhooks to know when a meeting has started and ended to automatically start and stop the AI analysis.
 
@@ -47,7 +58,7 @@ The application relies on webhooks to know when a meeting has started and ended 
 Note the **Secret Token** generated for the webhook. Set this in the backend `.env` as:
 - `ZOOM_WEBHOOK_SECRET`
 
-## 6. Migration and Coexistence
+## 7. Migration and Coexistence
 
 If migrating from an old Server-to-Server app:
 1. Do not immediately delete the old Server-to-Server app. Keep its webhooks active so existing scheduled meetings are processed correctly.
