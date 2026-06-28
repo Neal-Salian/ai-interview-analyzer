@@ -233,13 +233,22 @@ async def zoom_webhook(
 
             recruiter = None
             if host_email:
-                recruiter = db.query(Recruiter).filter(
-                    Recruiter.email == host_email
+                from app.db.models import RecruiterZoomToken
+                recruiter_token = db.query(RecruiterZoomToken).filter(
+                    RecruiterZoomToken.zoom_email == host_email
                 ).first()
+                
+                if recruiter_token:
+                    recruiter = recruiter_token.recruiter
+                else:
+                    recruiter = db.query(Recruiter).filter(
+                        Recruiter.email == host_email
+                    ).first()
+                    
                 if not recruiter:
                     logger.warning(
                         f"[webhook] meeting.started — host_email {host_email!r} "
-                        f"does not match any registered recruiter."
+                        f"does not match any registered recruiter zoom email or platform email."
                     )
 
             session = InterviewSession(
