@@ -325,7 +325,7 @@ async def schedule_session(
         raise HTTPException(status_code=400, detail="Cannot schedule session in the past")
 
     # ── Create Zoom meeting ──────────────────────────────────────────────
-    from app.services.zoom_api import zoom_api, ZoomAPIError
+    from app.services.zoom_api import zoom_api, ZoomAPIError, ZoomAuthError
 
     candidate = session.candidate
     job = session.job
@@ -335,10 +335,14 @@ async def schedule_session(
 
     try:
         zoom_result = await zoom_api.create_meeting(
+            recruiter_id=str(current_user.id),
+            db=db,
             topic=topic,
             start_time=scheduled_at.isoformat() + "Z",
             duration_minutes=45,
         )
+    except ZoomAuthError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except ZoomAPIError as e:
         logger.error(
             "[sessions] Zoom meeting creation failed for session %s: %s",
