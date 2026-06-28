@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.api.deps import get_current_user, verify_development_env
-from app.api.routes import zoom_webhook, jobs, sessions, questions, auth, candidates, analysis, reports, panel, evaluations, history
+from app.api.routes import zoom_webhook, zoom_oauth, jobs, sessions, questions, auth, candidates, analysis, reports, panel, evaluations, history
 from app.api.websocket import connect_recruiter, disconnect_recruiter
 from app.db.crud import get_active_sessions, get_session_history, get_questions_for_session
 from app.ml.stream.rtmp_consumer import consume_stream
@@ -38,6 +38,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.critical(f"[STARTUP] Database unavailable — aborting: {e}")
         raise
+
+    # ── Critical: Config Validation ───────────────────────────────────────
+    from app.core.config import settings
+    if not settings.ZOOM_TOKEN_ENCRYPTION_KEY:
+        logger.critical("[STARTUP] ZOOM_TOKEN_ENCRYPTION_KEY is missing from environment. Aborting.")
+        raise ValueError("Missing ZOOM_TOKEN_ENCRYPTION_KEY")
+    if len(settings.ZOOM_TOKEN_ENCRYPTION_KEY) < 32:
+        logger.warning("[STARTUP] ZOOM_TOKEN_ENCRYPTION_KEY seems invalid or too short. Fernet requires 32 url-safe base64-encoded bytes.")
 
     # ── Critical: Metric plugins must load ────────────────────────────────
     try:
@@ -80,6 +88,7 @@ app.add_middleware(
 )
 
 app.include_router(zoom_webhook.router, prefix="/api")
+app.include_router(zoom_oauth.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(sessions.router, prefix="/api")
 app.include_router(questions.router, prefix="/api")

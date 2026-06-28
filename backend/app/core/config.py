@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     ZOOM_CLIENT_ID: str = ""
     ZOOM_CLIENT_SECRET: str = ""
     ZOOM_WEBHOOK_SECRET: str = ""
+    ZOOM_TOKEN_ENCRYPTION_KEY: str = ""
 
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
@@ -20,6 +21,7 @@ class Settings(BaseSettings):
 
     FRONTEND_URL: str = "http://localhost:5173"
     CORS_ORIGINS: str = "http://localhost:5173"
+    BACKEND_URL: str = "http://localhost:8000"
 
     class Config:
         env_file = ".env"
