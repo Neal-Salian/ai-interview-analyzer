@@ -81,7 +81,13 @@ async def zoom_oauth_callback(code: str, state: str, db: Session = Depends(get_d
     token_record.zoom_email = zoom_email
     token_record.token_scope = scope
     token_record.last_refresh_at = datetime.utcnow()
-    db.commit()
+    
+    from sqlalchemy.exc import IntegrityError
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Database integrity error. This Zoom account or Recruiter may already be connected.")
 
     # Redirect to frontend settings or dashboard
     return RedirectResponse(url=f"{settings.FRONTEND_URL}/settings?zoom_connected=true")
