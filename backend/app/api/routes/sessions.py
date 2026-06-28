@@ -391,7 +391,15 @@ async def schedule_session(
             session.id, zoom_result.meeting_id, commit_err,
         )
         # Attempt to clean up the orphan Zoom meeting
-        background_tasks.add_task(zoom_api.delete_meeting, zoom_result.meeting_id)
+        async def _cleanup_orphan_meeting(rec_id: str, m_id: str):
+            from app.db.database import SessionLocal
+            bg_db = SessionLocal()
+            try:
+                await zoom_api.delete_meeting(recruiter_id=rec_id, db=bg_db, meeting_id=m_id)
+            finally:
+                bg_db.close()
+                
+        background_tasks.add_task(_cleanup_orphan_meeting, str(current_user.id), zoom_result.meeting_id)
         raise HTTPException(
             status_code=500,
             detail="Failed to save session. The Zoom meeting is being cleaned up.",
