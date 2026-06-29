@@ -35,6 +35,10 @@ async def teardown_session(session_id: str, db: DBSession) -> None:
             f"(server restart?), updating DB only"
         )
 
+    # Step 1.5 — Clear in-memory runtime state
+    from app.runtime.manager import RuntimeManager
+    RuntimeManager.clear(session_id)
+
     # Step 2 — mark the DB record completed
     updated = crud.mark_session_completed(db, session_id)
     if not updated:
