@@ -20,8 +20,7 @@ from app.core.logging_config import log_event
 
 logger = logging.getLogger(__name__)
 
-# ── In-memory registry of running consumer tasks ────────────────────────────
-_consumer_tasks: Dict[str, asyncio.Task] = {}
+# No local _consumer_tasks dict. We use app.core.registry instead.
 
 # How long to wait for the RTMP stream to open before declaring failure
 STARTUP_TIMEOUT_SECONDS = 15
@@ -80,6 +79,7 @@ async def start(
     # ── 2. Launch consumer in background task ───────────────────────────
     # Import here to keep PyAV out of the service module's top-level scope.
     from app.ml.stream.rtmp_consumer import consume_stream
+    from app.core.registry import register_session, cancel_session
 
     # Signal used to detect whether the consumer opened the stream.
     startup_event = asyncio.Event()
@@ -131,7 +131,7 @@ async def start(
             startup_event.set()  # unblock the waiter
 
     task = asyncio.create_task(_monitored_consumer())
-    _consumer_tasks[session_id] = task
+    register_session(session_id, task)
 
     # ── 3. Wait for startup signal or timeout ───────────────────────────
     try:
@@ -143,8 +143,7 @@ async def start(
                   session_id=session_id, recruiter_id=recruiter_id,
                   failure_reason=reason, startup_duration_ms=duration_ms)
         # Cancel the hung task
-        task.cancel()
-        _consumer_tasks.pop(session_id, None)
+        await cancel_session(session_id)
         return {
             "success": False,
             "startup_duration_ms": duration_ms,
@@ -162,7 +161,7 @@ async def start(
                   session_id=session_id, recruiter_id=recruiter_id,
                   failure_reason=reason, error_type=error_type,
                   startup_duration_ms=duration_ms)
-        _consumer_tasks.pop(session_id, None)
+        await cancel_session(session_id)
         return {
             "success": False,
             "startup_duration_ms": duration_ms,
@@ -182,11 +181,14 @@ async def start(
     }
 
 
+# These functions are no longer needed, use app.core.registry instead.
 def get_consumer_task(session_id: str) -> Optional[asyncio.Task]:
-    """Return the running consumer task for a session, if any."""
-    return _consumer_tasks.get(session_id)
+    """Deprecated: Use app.core.registry instead."""
+    from app.core.registry import get_bundle
+    bundle = get_bundle(session_id)
+    return bundle.consumer_task if bundle else None
 
 
 def remove_consumer_task(session_id: str) -> Optional[asyncio.Task]:
-    """Remove and return the consumer task (for teardown)."""
-    return _consumer_tasks.pop(session_id, None)
+    """Deprecated: Use app.core.registry.cancel_session instead."""
+    pass
