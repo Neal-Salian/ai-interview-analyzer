@@ -289,18 +289,18 @@ export default function LiveDashboard() {
                         {sessionInfo.zoom_join_url && (
                             <a href={sessionInfo.zoom_join_url} target="_blank" rel="noopener noreferrer" style={{ padding: '12px 24px', background: 'linear-gradient(135deg, #2d8cff 0%, #0b5fcc 100%)', color: '#fff', borderRadius: '8px', textDecoration: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <span className="material-symbols-outlined">videocam</span>
-                                Join Zoom
+                                Join Meeting
                             </a>
                         )}
                     </div>
                 ) : (
                     <>
-                        {/* Zoom Live & AI Runtime Status Bar */}
+                        {/* Meeting Live & AI Runtime Status Bar */}
                         <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '16px', marginBottom: '8px' }}>
                             <div style={{ flex: 1, padding: '16px', background: 'rgba(45, 140, 255, 0.05)', border: '1px solid rgba(45, 140, 255, 0.2)', borderRadius: 'var(--radius)', display: 'flex', alignItems: 'center', gap: '12px' }}>
                                 <span className="material-symbols-outlined" style={{ color: '#2d8cff', fontSize: '24px' }}>videocam</span>
                                 <div>
-                                    <div style={{ fontWeight: 600, color: '#2d8cff' }}>Zoom Meeting Live</div>
+                                    <div style={{ fontWeight: 600, color: '#2d8cff' }}>Meeting Live</div>
                                     <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Audio & Video streams connected</div>
                                 </div>
                             </div>

@@ -173,17 +173,17 @@ export default function SessionsPage() {
         await fetchSessions();
     };
 
-    const handleStartZoomMeeting = async (sessionId: string) => {
+    const handleStartMeeting = async (sessionId: string) => {
         try {
             const res = await client.get(`/sessions/${sessionId}/zoom`);
             const startUrl = res.data.zoom_start_url;
             if (startUrl) {
                 window.open(startUrl, '_blank', 'noopener,noreferrer');
             } else {
-                alert('This session does not have an associated Zoom meeting.');
+                alert('This session does not have an associated meeting.');
             }
         } catch (err: any) {
-            const detail = err?.response?.data?.detail || 'Failed to load Zoom meeting information.';
+            const detail = err?.response?.data?.detail || 'Failed to load meeting information.';
             alert(detail);
         }
     };
@@ -205,7 +205,7 @@ export default function SessionsPage() {
                 document.body.removeChild(textArea);
             }
         } else {
-            alert('No Zoom join link available for this session.');
+            alert('No join link available for this session.');
         }
     };
 
@@ -400,7 +400,7 @@ export default function SessionsPage() {
                                     onEnd={() => handleEndSession(session.session_id)}
                                     onJoin={() => navigate(`/sessions/${session.session_id}/live`)}
                                     onViewReport={() => navigate(`/sessions/${session.session_id}/report`)}
-                                    onStartZoom={() => handleStartZoomMeeting(session.session_id)}
+                                    onStartMeeting={() => handleStartMeeting(session.session_id)}
                                 />
                             ))}
                         </div>
@@ -429,7 +429,7 @@ export default function SessionsPage() {
                 onSchedule={(payload) => { if (selectedSession) handleScheduleSession(selectedSession.session_id, payload); }}
                 onDelete={() => { if (selectedSession) handleDeleteSession(selectedSession.session_id); }}
                 onAssignJob={(jobId) => { if (selectedSession) handleAssignJob(selectedSession.session_id, jobId); }}
-                onStartZoom={() => { if (selectedSession) handleStartZoomMeeting(selectedSession.session_id); }}
+                onStartMeeting={() => { if (selectedSession) handleStartMeeting(selectedSession.session_id); }}
                 onCopyJoinLink={() => { if (selectedSession) handleCopyJoinLink(selectedSession.session_id); }}
                 jobs={jobs}
             />
