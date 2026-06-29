@@ -45,7 +45,7 @@ export default function LiveDashboard() {
     const [currentSentiment, setCurrentSentiment] = useState<string>('—')
     const [integrityAlerts, setIntegrityAlerts] = useState<{event_type: string, severity: string, details: string, timestamp: string}[]>([])
     const [connected, setConnected] = useState(false)
-    const [sessionInfo, setSessionInfo] = useState<{ candidate: string, job: string, status?: string, zoom_join_url?: string } | null>(null)
+    const [sessionInfo, setSessionInfo] = useState<{ candidate: string, job: string, status?: string, zoom_join_url?: string, meeting_provider?: string, zoom_meeting_id?: string } | null>(null)
     
     const { aiRuntime, aiRuntimeDetails, retryInitialization } = useRuntimeStatus(sessionId, sessionInfo?.status === 'active')
     const transcriptRef = useRef<HTMLDivElement>(null)
@@ -76,7 +76,9 @@ export default function LiveDashboard() {
                     candidate: res.data.candidate || 'Unknown',
                     job: res.data.job || 'No role specified',
                     status: res.data.status,
-                    zoom_join_url: res.data.zoom_join_url
+                    zoom_join_url: res.data.zoom_join_url,
+                    meeting_provider: res.data.meeting_provider,
+                    zoom_meeting_id: res.data.zoom_meeting_id
                 })
             })
             .catch(err => console.error('Failed to fetch session info', err))
@@ -297,13 +299,30 @@ export default function LiveDashboard() {
                     <>
                         {/* Meeting Live & AI Runtime Status Bar */}
                         <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '16px', marginBottom: '8px' }}>
-                            <div style={{ flex: 1, padding: '16px', background: 'rgba(45, 140, 255, 0.05)', border: '1px solid rgba(45, 140, 255, 0.2)', borderRadius: 'var(--radius)', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <span className="material-symbols-outlined" style={{ color: '#2d8cff', fontSize: '24px' }}>videocam</span>
-                                <div>
-                                    <div style={{ fontWeight: 600, color: '#2d8cff' }}>Meeting Live</div>
-                                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Audio & Video streams connected</div>
+                            {sessionInfo?.meeting_provider === 'mock' ? (
+                                <div style={{ flex: 1, padding: '16px', background: 'rgba(245, 158, 11, 0.05)', border: '1px solid rgba(245, 158, 11, 0.2)', borderRadius: 'var(--radius)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#f59e0b', fontWeight: 600, marginBottom: '4px' }}>
+                                        <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>developer_mode</span>
+                                        Development Mode (OBS)
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+                                        <span style={{ color: 'var(--text-secondary)' }}>Server:</span>
+                                        <code style={{ background: 'var(--bg)', padding: '2px 6px', borderRadius: '4px', cursor: 'pointer' }} onClick={() => navigator.clipboard.writeText('rtmp://localhost:1935/stream')}>rtmp://localhost:1935/stream</code>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+                                        <span style={{ color: 'var(--text-secondary)' }}>Stream Key:</span>
+                                        <code style={{ background: 'var(--bg)', padding: '2px 6px', borderRadius: '4px', cursor: 'pointer' }} onClick={() => navigator.clipboard.writeText(sessionInfo.zoom_meeting_id || '')}>{sessionInfo.zoom_meeting_id}</code>
+                                    </div>
                                 </div>
-                            </div>
+                            ) : (
+                                <div style={{ flex: 1, padding: '16px', background: 'rgba(45, 140, 255, 0.05)', border: '1px solid rgba(45, 140, 255, 0.2)', borderRadius: 'var(--radius)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <span className="material-symbols-outlined" style={{ color: '#2d8cff', fontSize: '24px' }}>videocam</span>
+                                    <div>
+                                        <div style={{ fontWeight: 600, color: '#2d8cff' }}>Meeting Live</div>
+                                        <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Audio & Video streams connected</div>
+                                    </div>
+                                </div>
+                            )}
                             
                             <div style={{ flex: 2, padding: '16px', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
