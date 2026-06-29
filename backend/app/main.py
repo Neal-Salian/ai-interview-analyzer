@@ -150,11 +150,16 @@ def _check_database() -> bool:
 
 
 async def _check_ollama() -> bool:
-    """Probe Ollama API (model listing endpoint)."""
+    """Probe Ollama API and verify the configured model exists."""
     try:
+        from app.core.config import settings
         async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get("http://localhost:11434/api/tags")
-            return resp.status_code == 200
+            resp = await client.get(f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/tags")
+            if resp.status_code != 200:
+                return False
+            data = resp.json()
+            models = [m.get("name") for m in data.get("models", [])]
+            return settings.OLLAMA_MODEL in models
     except Exception:
         return False
 
