@@ -61,7 +61,7 @@ async def lifespan(app: FastAPI):
         active = get_active_sessions()
         for session in active:
             if session.zoom_meeting_id:
-                rtmp_url = f"rtmp://localhost:1935/stream/{session.zoom_meeting_id}"
+                rtmp_url = f"{settings.RTMP_SERVER_URL}/stream/{session.zoom_meeting_id}"
                 logger.info(f"[STARTUP] Recovering consumer for session {session.id}")
                 asyncio.create_task(consume_stream(str(session.id), rtmp_url))
         logger.info(f"[STARTUP] Recovery check done — {len(active)} active session(s) found")
@@ -167,8 +167,9 @@ async def _check_ollama() -> bool:
 async def _check_rtmp() -> bool:
     """Probe nginx-rtmp stats page."""
     try:
+        from app.core.config import settings
         async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get("http://localhost:8080/stat")
+            resp = await client.get(settings.RTMP_STAT_URL)
             return resp.status_code == 200
     except Exception:
         return False
