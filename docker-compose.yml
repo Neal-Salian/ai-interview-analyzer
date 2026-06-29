@@ -39,7 +39,9 @@ services:
       - ./backend/.env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-interview_db}
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      RTMP_SERVER_URL: rtmp://nginx_rtmp:1935
+      RTMP_STAT_URL: http://nginx_rtmp:8080/stat
     depends_on:
       db:
         condition: service_healthy
