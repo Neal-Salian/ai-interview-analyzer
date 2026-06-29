@@ -12,11 +12,11 @@ interface SessionCardProps {
     onEnd: (e: React.MouseEvent) => void;
     onJoin: (e: React.MouseEvent) => void;
     onViewReport: (e: React.MouseEvent) => void;
-    onStartZoom?: (e: React.MouseEvent) => void;
+    onStartMeeting?: (e: React.MouseEvent) => void;
     runtimeStatus?: string;
 }
 
-export function SessionCard({ session, onClick, onStart, onEnd, onJoin, onViewReport, onStartZoom, runtimeStatus }: SessionCardProps) {
+export function SessionCard({ session, onClick, onStart, onEnd, onJoin, onViewReport, onStartMeeting, runtimeStatus }: SessionCardProps) {
     const [panelCount, setPanelCount] = useState<number | null>(null);
 
     useEffect(() => {
@@ -151,11 +151,11 @@ export function SessionCard({ session, onClick, onStart, onEnd, onJoin, onViewRe
                 )}
                 {session.status === 'scheduled' && (
                     <div style={{ display: 'flex', gap: '6px', width: '100%' }}>
-                        {session.zoom_meeting_id && onStartZoom && (
+                        {session.zoom_meeting_id && onStartMeeting && (
                             <button
                                 className="session-card__action"
-                                onClick={(e) => handleActionClick(e, onStartZoom)}
-                                aria-label="Start Zoom meeting"
+                                onClick={(e) => handleActionClick(e, onStartMeeting)}
+                                aria-label="Start meeting"
                                 style={{
                                     flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
                                     background: 'linear-gradient(135deg, #2d8cff 0%, #0b5fcc 100%)',
@@ -165,7 +165,7 @@ export function SessionCard({ session, onClick, onStart, onEnd, onJoin, onViewRe
                                 }}
                             >
                                 <span className="material-symbols-outlined" style={{ fontSize: '16px' }} aria-hidden="true">videocam</span>
-                                Zoom
+                                Meeting
                             </button>
                         )}
                         <button

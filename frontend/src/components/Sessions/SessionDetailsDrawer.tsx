@@ -19,12 +19,12 @@ interface SessionDetailsDrawerProps {
     onSchedule?: (payload: { scheduled_at: string, interview_type?: string, notes?: string }) => void;
     onDelete?: () => void;
     onAssignJob?: (jobId: string) => void;
-    onStartZoom?: () => void;
+    onStartMeeting?: () => void;
     onCopyJoinLink?: () => void;
     jobs?: { id: string, title: string }[];
 }
 
-export function SessionDetailsDrawer({ session, isOpen, onClose, onStart, onEnd, onJoin, onViewReport, onCancel, onNoShow, onSchedule, onDelete, onAssignJob, onStartZoom, onCopyJoinLink, jobs = [] }: SessionDetailsDrawerProps) {
+export function SessionDetailsDrawer({ session, isOpen, onClose, onStart, onEnd, onJoin, onViewReport, onCancel, onNoShow, onSchedule, onDelete, onAssignJob, onStartMeeting, onCopyJoinLink, jobs = [] }: SessionDetailsDrawerProps) {
     const [confirmAction, setConfirmAction] = useState<'cancel' | 'no_show' | null>(null);
     const [isScheduling, setIsScheduling] = useState(false);
     const [copiedLink, setCopiedLink] = useState(false);
@@ -159,7 +159,7 @@ export function SessionDetailsDrawer({ session, isOpen, onClose, onStart, onEnd,
                         </div>
                     </div>
 
-                    {/* Zoom Meeting Info — only for scheduled/active with a meeting */}
+                    {/* Meeting Info — only for scheduled/active with a meeting */}
                     {session.zoom_meeting_id && ['scheduled', 'active'].includes(session.status) && (
                         <div style={{
                             display: 'flex', flexDirection: 'column', gap: '10px', padding: '14px 16px',
@@ -168,7 +168,7 @@ export function SessionDetailsDrawer({ session, isOpen, onClose, onStart, onEnd,
                         }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
                                 <span className="material-symbols-outlined" style={{ fontSize: '18px', color: '#2d8cff' }} aria-hidden="true">videocam</span>
-                                <span style={{ fontSize: '14px', fontWeight: 600, color: '#2d8cff' }}>Zoom Meeting</span>
+                                <span style={{ fontSize: '14px', fontWeight: 600, color: '#2d8cff' }}>Meeting</span>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Meeting ID</span>
@@ -180,7 +180,7 @@ export function SessionDetailsDrawer({ session, isOpen, onClose, onStart, onEnd,
                             {session.status === 'scheduled' && (
                                 <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
                                     <button
-                                        onClick={() => onStartZoom && onStartZoom()}
+                                        onClick={() => onStartMeeting && onStartMeeting()}
                                         style={{
                                             flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                                             padding: '10px 14px', fontSize: '13px', fontWeight: 600, borderRadius: '8px',
@@ -189,10 +189,10 @@ export function SessionDetailsDrawer({ session, isOpen, onClose, onStart, onEnd,
                                             boxShadow: '0 2px 8px rgba(45, 140, 255, 0.3)',
                                             transition: 'all 0.2s ease'
                                         }}
-                                        aria-label="Start Zoom meeting as host"
+                                        aria-label="Start meeting as host"
                                     >
                                         <span className="material-symbols-outlined" style={{ fontSize: '18px' }} aria-hidden="true">videocam</span>
-                                        Start Zoom Meeting
+                                        Start Meeting
                                     </button>
                                     <button
                                         onClick={() => {
@@ -222,7 +222,7 @@ export function SessionDetailsDrawer({ session, isOpen, onClose, onStart, onEnd,
 
                             {session.status === 'active' && (
                                 <button
-                                    onClick={() => onStartZoom && onStartZoom()}
+                                    onClick={() => onStartMeeting && onStartMeeting()}
                                     style={{
                                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                                         padding: '10px 14px', fontSize: '13px', fontWeight: 600, borderRadius: '8px',
@@ -231,7 +231,7 @@ export function SessionDetailsDrawer({ session, isOpen, onClose, onStart, onEnd,
                                         boxShadow: '0 2px 8px rgba(45, 140, 255, 0.3)',
                                         transition: 'all 0.2s ease'
                                     }}
-                                    aria-label="Join the current Zoom meeting"
+                                    aria-label="Join the current meeting"
                                 >
                                     <span className="material-symbols-outlined" style={{ fontSize: '18px' }} aria-hidden="true">videocam</span>
                                     Join Current Meeting
@@ -240,7 +240,7 @@ export function SessionDetailsDrawer({ session, isOpen, onClose, onStart, onEnd,
                         </div>
                     )}
 
-                    {/* No Zoom meeting warning for scheduled/active */}
+                    {/* No meeting warning for scheduled/active */}
                     {!session.zoom_meeting_id && ['scheduled', 'active'].includes(session.status) && (
                         <div style={{
                             display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px',
