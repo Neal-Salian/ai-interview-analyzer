@@ -39,6 +39,7 @@ services:
       - ./backend/.env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-interview_db}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
     depends_on:
       db:
         condition: service_healthy
