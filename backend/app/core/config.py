@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:5173"
     CORS_ORIGINS: str = "http://localhost:5173"
     BACKEND_URL: str = "http://localhost:8000"
+    
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "llama3.1:8b"
 
     class Config:
         env_file = ".env"
