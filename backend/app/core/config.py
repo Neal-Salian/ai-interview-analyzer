@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:5173"
     BACKEND_URL: str = "http://localhost:8000"
     
+    RTMP_SERVER_URL: str = "rtmp://localhost:1935"
+    RTMP_STAT_URL: str = "http://localhost:8080/stat"
+    
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.1:8b"
 
