@@ -110,6 +110,7 @@ class Session(Base):
     job_id = Column(UUID(as_uuid=True), ForeignKey("jobs.id"), nullable=True)
     recruiter_id = Column(UUID(as_uuid=True), ForeignKey("recruiters.id", ondelete="SET NULL"), nullable=True)
     zoom_meeting_id = Column(String, nullable=True, index=True)
+    meeting_provider = Column(String, nullable=True, default="zoom")
     zoom_join_url = Column(String, nullable=True)
     zoom_start_url = Column(String, nullable=True)
     zoom_password = Column(String, nullable=True)
