@@ -49,6 +49,8 @@ class RuntimeManager:
             "duration_ms": 0,
             "start_time": time.time()
         }
+        from app.core.logging_config import log_event
+        log_event(logger, "runtime_state_transition", session_id=session_id, previous_state="created", new_state="initializing")
 
     @classmethod
     def update_progress(cls, session_id: str, progress: int, step: str):
@@ -67,21 +69,27 @@ class RuntimeManager:
     def set_ready(cls, session_id: str):
         """Mark initialization as complete and successful."""
         if session_id in cls._state:
+            prev_status = cls._state[session_id].get("status", "unknown")
             cls._state[session_id]["status"] = "ready"
             cls._state[session_id]["progress"] = 100
             cls._state[session_id]["current_step"] = "AI engine ready."
             start_time = cls._state[session_id].get("start_time", time.time())
             cls._state[session_id]["duration_ms"] = int((time.time() - start_time) * 1000)
+            from app.core.logging_config import log_event
+            log_event(logger, "runtime_state_transition", session_id=session_id, previous_state=prev_status, new_state="ready")
 
     @classmethod
     def set_failed(cls, session_id: str, failed_component: str, error_msg: str):
         """Mark initialization as failed with specific component."""
         if session_id in cls._state:
+            prev_status = cls._state[session_id].get("status", "unknown")
             cls._state[session_id]["status"] = "failed"
             cls._state[session_id]["failed_component"] = failed_component
             cls._state[session_id]["current_step"] = error_msg
             start_time = cls._state[session_id].get("start_time", time.time())
             cls._state[session_id]["duration_ms"] = int((time.time() - start_time) * 1000)
+            from app.core.logging_config import log_event
+            log_event(logger, "runtime_state_transition", session_id=session_id, previous_state=prev_status, new_state="failed", failed_component=failed_component)
 
     @classmethod
     async def start_analysis(cls, session_id: str, db=None, session_model=None, recruiter_id: str = None) -> bool:
@@ -179,6 +187,9 @@ class RuntimeManager:
     def clear(cls, session_id: str):
         """Clear state for a session."""
         if session_id in cls._state:
+            prev_status = cls._state[session_id].get("status", "unknown")
+            from app.core.logging_config import log_event
+            log_event(logger, "runtime_state_transition", session_id=session_id, previous_state=prev_status, new_state="terminated")
             del cls._state[session_id]
 
     @classmethod
@@ -207,49 +218,57 @@ class RuntimeManager:
             
             # 1. RTMP Server Reachable
             cls.update_progress(session_id, 20, "Checking RTMP Server Reachable...")
-            if await rtmp_service.check_health():
-                cls.set_check_result(session_id, "rtmp", True)
+            if not await rtmp_service.check_health():
+                cls.set_check_result(session_id, "rtmp", False)
                 cls.set_failed(session_id, "rtmp", "Failed to connect to streaming backend.")
-                session.ai_runtime_status = "failed"
-                db.commit()
-                log_event(logger, "runtime_failed", failed_component="rtmp", **log_kwargs)
+                if session:
+                    session.ai_runtime_status = "failed"
+                    db.commit()
+                log_event(logger, "runtime_failed", failed_component="rtmp", error="Failed to connect to streaming backend.", **log_kwargs)
                 return
+            cls.set_check_result(session_id, "rtmp", True)
                 
             await asyncio.sleep(0.5)
             
             # 2. Ollama Connectivity
             cls.update_progress(session_id, 40, "Checking Ollama connectivity...")
-            if await ollama_service.check_health():
-                cls.set_check_result(session_id, "ollama", True)
+            if not await ollama_service.check_health():
+                cls.set_check_result(session_id, "ollama", False)
                 cls.set_failed(session_id, "ollama", "Failed to connect to local LLM.")
-                session.ai_runtime_status = "failed"
-                db.commit()
-                log_event(logger, "runtime_failed", failed_component="ollama", **log_kwargs)
+                if session:
+                    session.ai_runtime_status = "failed"
+                    db.commit()
+                log_event(logger, "runtime_failed", failed_component="ollama", error="Failed to connect to local LLM.", **log_kwargs)
                 return
+            cls.set_check_result(session_id, "ollama", True)
                 
             await asyncio.sleep(0.5)
 
             # 3. Whisper Dependencies
             cls.update_progress(session_id, 60, "Checking Whisper dependencies...")
-            if await whisper_service.check_health():
-                cls.set_check_result(session_id, "whisper", True)
+            if not await whisper_service.check_health():
+                cls.set_check_result(session_id, "whisper", False)
                 cls.set_failed(session_id, "whisper", "Missing Whisper dependencies.")
-                session.ai_runtime_status = "failed"
-                db.commit()
-                log_event(logger, "runtime_failed", failed_component="whisper", **log_kwargs)
+                if session:
+                    session.ai_runtime_status = "failed"
+                    db.commit()
+                log_event(logger, "runtime_failed", failed_component="whisper", error="Missing Whisper dependencies.", **log_kwargs)
                 return
+            cls.set_check_result(session_id, "whisper", True)
                 
             await asyncio.sleep(0.5)
 
             # 4. DeepFace Dependencies
             cls.update_progress(session_id, 80, "Checking DeepFace dependencies...")
-            if await deepface_service.check_health():
-                cls.set_check_result(session_id, "deepface", True)
+            if not await deepface_service.check_health():
+                cls.set_check_result(session_id, "deepface", False)
                 cls.set_failed(session_id, "deepface", "Missing DeepFace dependencies.")
-                session.ai_runtime_status = "failed"
-                db.commit()
-                log_event(logger, "runtime_failed", failed_component="deepface", **log_kwargs)
+                if session:
+                    session.ai_runtime_status = "failed"
+                    db.commit()
+                log_event(logger, "runtime_failed", failed_component="deepface", error="Missing DeepFace dependencies.", **log_kwargs)
                 return
+            cls.set_check_result(session_id, "deepface", True)
                 
             await asyncio.sleep(0.5)
 
@@ -259,8 +278,9 @@ class RuntimeManager:
             await asyncio.sleep(0.5)
             
             cls.set_ready(session_id)
-            session.ai_runtime_status = "ready"
-            db.commit()
+            if session:
+                session.ai_runtime_status = "ready"
+                db.commit()
             
             status = cls.get_status(session_id)
             log_event(logger, "runtime_check_completed", duration_ms=status.get("duration_ms"), **log_kwargs)
@@ -269,8 +289,9 @@ class RuntimeManager:
         except Exception as e:
             logger.error(f"Initialization task error: {e}")
             cls.set_failed(session_id, "internal", "Internal server error during initialization.")
-            session.ai_runtime_status = "failed"
-            db.commit()
-            log_event(logger, "runtime_failed", failed_component="internal", **log_kwargs)
+            if session:
+                session.ai_runtime_status = "failed"
+                db.commit()
+            log_event(logger, "runtime_failed", failed_component="internal", error=str(e), **log_kwargs)
         finally:
             db.close()
