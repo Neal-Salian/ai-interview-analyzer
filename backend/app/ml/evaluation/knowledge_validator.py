@@ -5,9 +5,7 @@ from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "llama3.1:8b"
-
+from app.core.config import settings
 async def validate_knowledge(transcript: str, domain: str, rubric: Dict[str, Any]) -> Dict[str, Any]:
     """
     Uses LLM to validate the facts in the answer against the specific domain.
@@ -42,9 +40,9 @@ Analyze the transcript and respond ONLY with a JSON object. No markdown formatti
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
-                OLLAMA_URL,
+                f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/generate",
                 json={
-                    "model": OLLAMA_MODEL,
+                    "model": settings.OLLAMA_MODEL,
                     "prompt": prompt,
                     "stream": False,
                     "options": {
