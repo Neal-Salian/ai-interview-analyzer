@@ -74,9 +74,22 @@ ollama logs
 
 **Common Causes**:
 - Ollama not installed or not started: `ollama serve`
-- Model not pulled: `ollama pull llama3.1:8b`
+- Model not pulled: `ollama pull llama3.1:8b` (Ensure `OLLAMA_MODEL` in `.env` matches the pulled model exactly)
 - Port conflict: another service on port 11434
 - GPU out of memory: check `nvidia-smi` or reduce model size
+- Docker networking issue: The backend container cannot reach `localhost:11434` on the host unless configured properly.
+
+### Supported Ollama Deployment Configurations
+Ensure your `.env` overrides `OLLAMA_BASE_URL` depending on your environment:
+
+1. **Local Development (No Docker)**
+   - `OLLAMA_BASE_URL=http://localhost:11434`
+2. **Docker Desktop (Mac/Windows)**
+   - `OLLAMA_BASE_URL=http://host.docker.internal:11434`
+3. **Docker on Linux / External Server**
+   - `OLLAMA_BASE_URL=http://172.17.0.1:11434` (or exact host IP)
+4. **Containerized Ollama (if added to docker-compose.yml)**
+   - `OLLAMA_BASE_URL=http://ollama:11434`
 
 > **Impact**: Ollama being down does NOT block interview recording or analysis.
 > Only real-time question generation and metric explanations are affected.
