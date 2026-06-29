@@ -29,8 +29,9 @@ STARTUP_TIMEOUT_SECONDS = 15
 async def check_health() -> bool:
     """Check if the RTMP server is reachable."""
     try:
+        from app.core.config import settings
         async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get("http://localhost:8080/stat")
+            resp = await client.get(settings.RTMP_STAT_URL)
             return resp.status_code == 200
     except Exception:
         return False

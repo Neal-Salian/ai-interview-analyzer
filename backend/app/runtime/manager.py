@@ -137,7 +137,8 @@ class RuntimeManager:
             log_event(logger, "rtmp_failed", failure_reason=reason, **log_kwargs)
             return False
 
-        rtmp_url = f"rtmp://localhost:1935/stream/{zoom_meeting_id}"
+        from app.core.config import settings
+        rtmp_url = f"{settings.RTMP_SERVER_URL}/stream/{zoom_meeting_id}"
 
         # ── Call RTMPService.start() ────────────────────────────────────
         log_event(logger, "rtmp_start_requested",
