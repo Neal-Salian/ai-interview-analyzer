@@ -189,7 +189,10 @@ async def websocket_endpoint(
         return
 
     # Note: connect_recruiter no longer calls accept() since we accepted above
-    await connect_recruiter(session_id, websocket)
+    connected = await connect_recruiter(session_id, websocket)
+    if not connected:
+        return
+        
     try:
         try:
             history = await asyncio.to_thread(get_session_history, session_id)
@@ -214,10 +217,10 @@ async def websocket_endpoint(
                 await websocket.send_json({"type": "ping"})
 
     except WebSocketDisconnect:
-        disconnect_recruiter(session_id)
+        disconnect_recruiter(session_id, websocket)
     except Exception as e:
         logger.exception(f"[WS] Unexpected error for {session_id}: {e}")
-        disconnect_recruiter(session_id)
+        disconnect_recruiter(session_id, websocket)
 
 
 
