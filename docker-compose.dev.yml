@@ -14,6 +14,7 @@ services:
       - ./backend:/app
 
   frontend:
+    image: interview_frontend_dev
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
