@@ -16,9 +16,7 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# Reuse the same Ollama config as question_generator.py
-OLLAMA_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "llama3.1:8b"
+from app.core.config import settings
 
 
 async def generate_explanation(prompt: str) -> str:
@@ -35,9 +33,9 @@ async def generate_explanation(prompt: str) -> str:
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
-                OLLAMA_URL,
+                f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/generate",
                 json={
-                    "model": OLLAMA_MODEL,
+                    "model": settings.OLLAMA_MODEL,
                     "prompt": prompt,
                     "stream": False,
                     "options": {
