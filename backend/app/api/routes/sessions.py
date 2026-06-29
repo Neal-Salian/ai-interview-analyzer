@@ -12,6 +12,7 @@ from app.db.models import Session as InterviewSession, Candidate, Job
 from app.api.deps import get_current_user, get_owned_session
 from app.services.teardown import teardown_session
 from app.core.logging_config import log_event
+from app.core.config import settings
 import httpx
 import asyncio
 from app.runtime.manager import RuntimeManager
@@ -34,7 +35,6 @@ class SessionSchedule(BaseModel):
     scheduled_at: str
     interview_type: Optional[str] = None
     notes: Optional[str] = None
-    provider_type: Optional[str] = "zoom"
 
 
 @router.get("/sessions/today")
@@ -170,6 +170,7 @@ def get_session(
         "notes": notes,
         "zoom_meeting_id": session.zoom_meeting_id,
         "zoom_join_url": session.zoom_join_url,
+        "meeting_provider": session.meeting_provider,
     }
 
 
@@ -193,6 +194,7 @@ def get_session_zoom(
         "zoom_meeting_id": session.zoom_meeting_id,
         "zoom_start_url": session.zoom_start_url,
         "zoom_join_url": session.zoom_join_url,
+        "meeting_provider": session.meeting_provider,
     }
 
 
@@ -328,7 +330,7 @@ async def schedule_session(
     # ── Create Meeting ──────────────────────────────────────────────
     from app.core.providers import get_meeting_provider, ProviderError, ProviderAuthError
 
-    provider_type = payload.provider_type or "zoom"
+    provider_type = "mock" if settings.ENV == "development" else "zoom"
     provider = get_meeting_provider(provider_type)
 
     candidate = session.candidate
