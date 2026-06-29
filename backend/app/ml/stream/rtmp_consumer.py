@@ -25,6 +25,7 @@ LLM_EVERY_N_CHUNKS = 0
 async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
     logger.info(f"[CONSUMER] Opening stream: {rtmp_url}")
 
+    container = None
     try:
         container = await asyncio.to_thread(
             av.open, rtmp_url, options={"rtmp_live": "live"}
@@ -36,219 +37,236 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                   error_message=str(e))
         return
 
-    last_analyzed = 0
-    audio_buffer = []
-    transcript_chunk_count = 0
-    integrity_state = {}  # Phase 3: persistent state for liveness tracking
+    try:
 
-    logger.info("[CONSUMER] Stream opened. Starting packet loop...")
-    log_event(logger, "consumer_started",
-              session_id=session_id, rtmp_url=rtmp_url)
+        last_analyzed = 0
+        audio_buffer = []
+        transcript_chunk_count = 0
+        integrity_state = {}  # Phase 3: persistent state for liveness tracking
 
-    for packet in container.demux():
-        if packet.dts is None:
-            continue
+        logger.info("[CONSUMER] Stream opened. Starting packet loop...")
+        log_event(logger, "consumer_started",
+                  session_id=session_id, rtmp_url=rtmp_url)
 
-        # ── Video — emotion + attention at 1fps ───────────────────────────────
-        if packet.stream.type == 'video':
-            now = time.time()
-            if now - last_analyzed >= 1.0:
-                try:
-                    frames = packet.decode()
-                    if not frames:
-                        continue
+        for packet in container.demux():
+            if packet.dts is None:
+                continue
 
-                    frame = frames[0].to_ndarray(format="bgr24")
-
-                    # Run emotion and attention in parallel on the same frame
-                    emotion, attention = await asyncio.gather(
-                        asyncio.to_thread(analyze_frame, frame),
-                        asyncio.to_thread(analyze_attention, frame),
-                    )
-
-                    # Save & broadcast emotion (existing)
-                    await asyncio.to_thread(save_emotion, session_id, emotion)
-                    await broadcast(session_id, {
-                        "type": "emotion",
-                        "dominant_emotion": emotion["dominant_emotion"],
-                        "confidence": emotion["confidence"],
-                    })
-
-                    # Save & broadcast attention (Phase 2)
-                    await asyncio.to_thread(save_attention, session_id, attention)
-                    await broadcast(session_id, {
-                        "type": "attention",
-                        "direction": attention["direction"],
-                        "confidence": attention["confidence"],
-                    })
-
-                    # Phase 3: Integrity checks (reuses frame + attention result)
+            # ── Video — emotion + attention at 1fps ───────────────────────────────
+            if packet.stream.type == 'video':
+                now = time.time()
+                if now - last_analyzed >= 1.0:
                     try:
-                        from app.ml.integrity.integrity_checker import check_integrity
-                        integrity = await asyncio.to_thread(
-                            check_integrity, frame, attention,
-                            prev_state=integrity_state,
+                        frames = packet.decode()
+                        if not frames:
+                            continue
+
+                        frame = frames[0].to_ndarray(format="bgr24")
+
+                        # Run emotion and attention in parallel on the same frame
+                        emotion, attention = await asyncio.gather(
+                            asyncio.to_thread(analyze_frame, frame),
+                            asyncio.to_thread(analyze_attention, frame),
                         )
-                        integrity_state = integrity.get("updated_state", {})
-                        for event in integrity.get("events", []):
-                            await asyncio.to_thread(
-                                save_integrity_event, session_id, event
+
+                        # Save & broadcast emotion (existing)
+                        await asyncio.to_thread(save_emotion, session_id, emotion)
+                        await broadcast(session_id, {
+                            "type": "emotion",
+                            "dominant_emotion": emotion["dominant_emotion"],
+                            "confidence": emotion["confidence"],
+                        })
+
+                        # Save & broadcast attention (Phase 2)
+                        await asyncio.to_thread(save_attention, session_id, attention)
+                        await broadcast(session_id, {
+                            "type": "attention",
+                            "direction": attention["direction"],
+                            "confidence": attention["confidence"],
+                        })
+
+                        # Phase 3: Integrity checks (reuses frame + attention result)
+                        try:
+                            from app.ml.integrity.integrity_checker import check_integrity
+                            integrity = await asyncio.to_thread(
+                                check_integrity, frame, attention,
+                                prev_state=integrity_state,
                             )
-                            await broadcast(session_id, {
-                                "type": "integrity_alert",
-                                "event_type": event["event_type"],
-                                "severity": event["severity"],
-                                "details": str(event.get("details", "")),
-                            })
-                    except ImportError:
-                        logger.debug("[INTEGRITY] integrity_checker module not installed, skipping")
-                    except Exception as e:
-                        logger.warning(f"[INTEGRITY ERROR] {e}")
+                            integrity_state = integrity.get("updated_state", {})
+                            for event in integrity.get("events", []):
+                                await asyncio.to_thread(
+                                    save_integrity_event, session_id, event
+                                )
+                                await broadcast(session_id, {
+                                    "type": "integrity_alert",
+                                    "event_type": event["event_type"],
+                                    "severity": event["severity"],
+                                    "details": str(event.get("details", "")),
+                                })
+                        except ImportError:
+                            logger.debug("[INTEGRITY] integrity_checker module not installed, skipping")
+                        except Exception as e:
+                            logger.warning(f"[INTEGRITY ERROR] {e}")
 
-                    logger.debug(
-                        f"[EMOTION] {emotion['dominant_emotion']} "
-                        f"({emotion['confidence']:.1f}%) "
-                        f"[ATTENTION] {attention['direction']}"
-                    )
-                    last_analyzed = now
-
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    logger.warning(f"[EMOTION ERROR] {e}")
-
-        # ── Audio — transcription + question generation ───────────────────────
-        elif packet.stream.type == 'audio':
-            audio_buffer.append(packet)
-
-            if len(audio_buffer) >= 900:
-                packets_to_process = audio_buffer[:]
-                audio_buffer = []
-
-                # ── Retry loop for transcription ──────────────────────────
-                # Whisper can transiently fail (OOM, corrupted frame, CUDA
-                # hiccup).  We retry up to MAX_TRANSCRIBE_RETRIES times with
-                # a brief pause before giving up on this chunk.
-                #
-                # If all retries fail we log diagnostics and drop the chunk
-                # rather than prepending it back (which could cause an
-                # infinite retry loop if the audio data itself is corrupt).
-                MAX_TRANSCRIBE_RETRIES = 2
-                transcript = None
-
-                for attempt in range(1, MAX_TRANSCRIBE_RETRIES + 1):
-                    try:
-                        transcript = await asyncio.to_thread(
-                            transcribe_chunk, packets_to_process
+                        logger.debug(
+                            f"[EMOTION] {emotion['dominant_emotion']} "
+                            f"({emotion['confidence']:.1f}%) "
+                            f"[ATTENTION] {attention['direction']}"
                         )
-                        break  # success
+                        last_analyzed = now
+
                     except asyncio.CancelledError:
                         raise
                     except Exception as e:
-                        logger.warning(
-                            f"[TRANSCRIPT] attempt {attempt}/{MAX_TRANSCRIBE_RETRIES} "
-                            f"failed ({type(e).__name__}: {e})"
-                        )
-                        if attempt < MAX_TRANSCRIBE_RETRIES:
-                            await asyncio.sleep(0.5)
+                        logger.warning(f"[EMOTION ERROR] {e}")
 
-                if transcript is None:
-                    # All retries exhausted — log diagnostic info so the
-                    # lost audio can be investigated.  We do NOT prepend
-                    # packets back to the buffer because corrupt packets
-                    # would cause an infinite failure loop.
-                    logger.error(
-                        f"[TRANSCRIPT] all {MAX_TRANSCRIBE_RETRIES} retries "
-                        f"exhausted — dropping {len(packets_to_process)} "
-                        f"audio packets for session {session_id}."
-                    )
-                    continue  # skip to next packet in the stream
+            # ── Audio — transcription + question generation ───────────────────────
+            elif packet.stream.type == 'audio':
+                audio_buffer.append(packet)
 
-                transcript_chunk_count += 1
+                if len(audio_buffer) >= 900:
+                    packets_to_process = audio_buffer[:]
+                    audio_buffer = []
 
-                # Phase 4: Vocabulary correction with job context
-                if job_id:
-                    try:
-                        from app.ml.speech.vocabulary_corrector import correct_transcript
-                        from app.db.crud import get_job
-                        job = await asyncio.to_thread(get_job, job_id)
-                        if job:
-                            transcript = correct_transcript(
-                                transcript,
-                                job_skills=job.extracted_skills or [],
-                                candidate_name="",
+                    # ── Retry loop for transcription ──────────────────────────
+                    # Whisper can transiently fail (OOM, corrupted frame, CUDA
+                    # hiccup).  We retry up to MAX_TRANSCRIBE_RETRIES times with
+                    # a brief pause before giving up on this chunk.
+                    #
+                    # If all retries fail we log diagnostics and drop the chunk
+                    # rather than prepending it back (which could cause an
+                    # infinite retry loop if the audio data itself is corrupt).
+                    MAX_TRANSCRIBE_RETRIES = 2
+                    transcript = None
+
+                    for attempt in range(1, MAX_TRANSCRIBE_RETRIES + 1):
+                        try:
+                            transcript = await asyncio.to_thread(
+                                transcribe_chunk, packets_to_process
                             )
-                    except Exception as e:
-                        logger.warning(f"[VOCAB CORRECTION] {e}")
+                            break  # success
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception as e:
+                            logger.warning(
+                                f"[TRANSCRIPT] attempt {attempt}/{MAX_TRANSCRIBE_RETRIES} "
+                                f"failed ({type(e).__name__}: {e})"
+                            )
+                            if attempt < MAX_TRANSCRIBE_RETRIES:
+                                await asyncio.sleep(0.5)
 
-                # Save transcript to DB
-                await asyncio.to_thread(save_transcript, session_id, transcript)
-
-                # Score sentiment on this chunk and broadcast
-                try:
-                    sentiment = await asyncio.to_thread(
-                        score_sentiment, transcript
-                    )
-                    await broadcast(session_id, {
-                        "type": "sentiment",
-                        "label": sentiment["label"],
-                        "score": sentiment["score"],
-                    })
-                    logger.debug(
-                        f"[SENTIMENT] {sentiment['label']} "
-                        f"({sentiment['score']})"
-                    )
-                except Exception as e:
-                    logger.warning(f"[SENTIMENT ERROR] {e}")
-
-                # Broadcast transcript to dashboard
-                await broadcast(session_id, {
-                    "type": "transcript",
-                    "text": transcript,
-                })
-
-                logger.info(f"[TRANSCRIPT] {transcript[:80]}")
-
-                # ── LLM question generation ───────────────────────────────
-                # Fire-and-forget so it never blocks the audio loop
-                if transcript_chunk_count % (LLM_EVERY_N_CHUNKS + 1) == 0:
-                    asyncio.create_task(
-                        _generate_and_broadcast_questions(
-                            session_id=session_id,
-                            transcript=transcript,
-                            job_id=job_id,
+                    if transcript is None:
+                        # All retries exhausted — log diagnostic info so the
+                        # lost audio can be investigated.  We do NOT prepend
+                        # packets back to the buffer because corrupt packets
+                        # would cause an infinite failure loop.
+                        logger.error(
+                            f"[TRANSCRIPT] all {MAX_TRANSCRIBE_RETRIES} retries "
+                            f"exhausted — dropping {len(packets_to_process)} "
+                            f"audio packets for session {session_id}."
                         )
-                    )
+                        continue  # skip to next packet in the stream
 
-                # ── Phase 3: Voice anomaly detection ──────────────────────
-                try:
-                    from app.ml.integrity.voice_detector import detect_voice_anomaly
-                    from app.ml.speech.transcriber import get_audio_array
-                    
-                    voice_result = await asyncio.to_thread(
-                        detect_voice_anomaly,
-                        get_audio_array(packets_to_process)
-                    )
-                    if voice_result.get("anomaly_detected"):
-                        await asyncio.to_thread(
-                            save_integrity_event, session_id, {
-                                "event_type": f"voice_{voice_result['anomaly_type']}",
-                                "severity": "warning",
-                                "details": voice_result.get("details", {}),
-                            }
+                    transcript_chunk_count += 1
+
+                    # Phase 4: Vocabulary correction with job context
+                    if job_id:
+                        try:
+                            from app.ml.speech.vocabulary_corrector import correct_transcript
+                            from app.db.crud import get_job
+                            job = await asyncio.to_thread(get_job, job_id)
+                            if job:
+                                transcript = correct_transcript(
+                                    transcript,
+                                    job_skills=job.extracted_skills or [],
+                                    candidate_name="",
+                                )
+                        except Exception as e:
+                            logger.warning(f"[VOCAB CORRECTION] {e}")
+
+                    # Save transcript to DB
+                    await asyncio.to_thread(save_transcript, session_id, transcript)
+
+                    # Score sentiment on this chunk and broadcast
+                    try:
+                        sentiment = await asyncio.to_thread(
+                            score_sentiment, transcript
                         )
                         await broadcast(session_id, {
-                            "type": "integrity_alert",
-                            "event_type": f"voice_{voice_result['anomaly_type']}",
-                            "severity": "warning",
-                            "details": str(voice_result.get("details", "")),
+                            "type": "sentiment",
+                            "label": sentiment["label"],
+                            "score": sentiment["score"],
                         })
-                except ImportError:
-                    logger.debug("[VOICE INTEGRITY] voice_detector module not installed, skipping")
-                except Exception as e:
-                    logger.warning(f"[VOICE INTEGRITY] {e}")
+                        logger.debug(
+                            f"[SENTIMENT] {sentiment['label']} "
+                            f"({sentiment['score']})"
+                        )
+                    except Exception as e:
+                        logger.warning(f"[SENTIMENT ERROR] {e}")
 
-    logger.info(f"[CONSUMER] Stream ended for session {session_id}")
+                    # Broadcast transcript to dashboard
+                    await broadcast(session_id, {
+                        "type": "transcript",
+                        "text": transcript,
+                    })
+
+                    logger.info(f"[TRANSCRIPT] {transcript[:80]}")
+
+                    # ── LLM question generation ───────────────────────────────
+                    # Fire-and-forget so it never blocks the audio loop
+                    if transcript_chunk_count % (LLM_EVERY_N_CHUNKS + 1) == 0:
+                        task = asyncio.create_task(
+                            _generate_and_broadcast_questions(
+                                session_id=session_id,
+                                transcript=transcript,
+                                job_id=job_id,
+                            )
+                        )
+                        try:
+                            from app.core.registry import add_tier2_task
+                            add_tier2_task(session_id, task)
+                        except Exception as e:
+                            logger.warning(f"[CONSUMER] Failed to register tier 2 task: {e}")
+
+                    # ── Phase 3: Voice anomaly detection ──────────────────────
+                    try:
+                        from app.ml.integrity.voice_detector import detect_voice_anomaly
+                        from app.ml.speech.transcriber import get_audio_array
+                    
+                        voice_result = await asyncio.to_thread(
+                            detect_voice_anomaly,
+                            get_audio_array(packets_to_process)
+                        )
+                        if voice_result.get("anomaly_detected"):
+                            await asyncio.to_thread(
+                                save_integrity_event, session_id, {
+                                    "event_type": f"voice_{voice_result['anomaly_type']}",
+                                    "severity": "warning",
+                                    "details": voice_result.get("details", {}),
+                                }
+                            )
+                            await broadcast(session_id, {
+                                "type": "integrity_alert",
+                                "event_type": f"voice_{voice_result['anomaly_type']}",
+                                "severity": "warning",
+                                "details": str(voice_result.get("details", "")),
+                            })
+                    except ImportError:
+                        logger.debug("[VOICE INTEGRITY] voice_detector module not installed, skipping")
+                    except Exception as e:
+                        logger.warning(f"[VOICE INTEGRITY] {e}")
+
+        logger.info(f"[CONSUMER] Stream ended for session {session_id}")
+    except Exception as e:
+        logger.error(f"[CONSUMER] Error during stream processing: {e}")
+        raise
+    finally:
+        if container:
+            try:
+                container.close()
+                logger.info(f"[CONSUMER] Cleaned up PyAV container for session {session_id}")
+            except Exception as e:
+                logger.error(f"[CONSUMER] Failed to close PyAV container: {e}")
 
 
 async def _generate_and_broadcast_questions(
