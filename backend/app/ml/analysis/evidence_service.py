@@ -22,6 +22,9 @@ from __future__ import annotations
 
 import json
 import logging
+import time
+import asyncio
+from datetime import datetime
 from typing import Any
 
 from app.ml.analysis.evidence_types import (
@@ -31,6 +34,7 @@ from app.ml.analysis.evidence_types import (
     STARExtraction,
     TechnicalEvidence,
 )
+from app.ml.analysis.interfaces import SessionContext
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +52,7 @@ EVIDENCE_PIPELINE_VERSIONS = {
 
 # ── LLM provider abstraction ─────────────────────────────────────────────────
 
-def _call_llm(prompt: str, max_tokens: int = 2000) -> str:
+def _call_llm(prompt: str, max_tokens: int = 3000) -> str:
     """
     Call the LLM provider and return the raw response text.
 
@@ -111,55 +115,112 @@ def _parse_json_response(raw: str) -> dict:
 # ── Main extraction function ──────────────────────────────────────────────────
 
 
-def extract_evidence(
-    transcript: str,
-    job_title: str = "",
-    job_skills: list[str] | None = None,
-    candidate_name: str = "",
-) -> EvidenceCollection:
+async def build_evidence(ctx: SessionContext) -> EvidenceCollection:
     """
     Execute the single-pass evidence extraction pipeline.
 
-    This function is called ONCE per session teardown.  It sends ONE
+    This function is called ONCE per session teardown. It sends ONE
     structured prompt to the LLM and parses the response into typed
     evidence objects.
-
-    Args:
-        transcript:     full cleaned transcript text
-        job_title:      role being interviewed for
-        job_skills:     skills from the job description
-        candidate_name: candidate's name for context
-
-    Returns:
-        EvidenceCollection containing all extracted evidence.
-        Returns an empty collection if the LLM call fails (graceful fallback).
+    
+    If it fails, it retries exactly once with a simplified prompt.
+    If it fails again, it returns an empty EvidenceCollection to fallback gracefully.
     """
-    if not transcript or not transcript.strip():
-        logger.info("[evidence_service] Empty transcript — returning empty evidence")
+    start_time = time.time()
+    logger.info("[evidence_service] Evidence extraction started")
+
+    if not ctx.candidate_segments:
+        logger.info("[evidence_service] Empty candidate transcript — returning empty evidence")
         return EvidenceCollection()
 
-    skills_str = ", ".join(job_skills or [])
-    word_count = len(transcript.split())
+    # Build numbered transcript
+    numbered_transcript = []
+    for i, seg in enumerate(ctx.candidate_segments):
+        text = seg.get("text", "").strip()
+        numbered_transcript.append(f"[Chunk Index: {i}] {text}")
+    
+    transcript_text = "\n".join(numbered_transcript)
+    skills_str = ", ".join(ctx.job_skills or [])
+    word_count = len(transcript_text.split())
 
     prompt = _build_extraction_prompt(
-        transcript=transcript,
-        job_title=job_title,
+        transcript=transcript_text,
+        job_title=ctx.job_title,
         skills_str=skills_str,
-        candidate_name=candidate_name,
+        candidate_name=ctx.candidate_name,
         word_count=word_count,
     )
 
-    raw_response = _call_llm(prompt, max_tokens=3000)
-    if not raw_response:
-        logger.warning("[evidence_service] Empty LLM response — returning empty evidence")
-        return EvidenceCollection()
+    retry_used = False
+    fallback_used = False
+    
+    try:
+        raw_response = await asyncio.to_thread(_call_llm, prompt, 3000)
+        if not raw_response:
+            raise ValueError("Empty LLM response")
+            
+        parsed = _parse_json_response(raw_response)
+        if not parsed:
+            raise ValueError("Malformed JSON")
+            
+    except Exception as e:
+        logger.warning(f"[evidence_service] LLM call failed: {e}. Attempting retry with simplified prompt.")
+        retry_used = True
+        
+        simplified_prompt = _build_simplified_prompt(
+            transcript=transcript_text,
+            job_title=ctx.job_title,
+            skills_str=skills_str,
+            candidate_name=ctx.candidate_name,
+            word_count=word_count,
+        )
+        try:
+            raw_response = await asyncio.to_thread(_call_llm, simplified_prompt, 3000)
+            if not raw_response:
+                raise ValueError("Empty LLM response on retry")
+                
+            parsed = _parse_json_response(raw_response)
+            if not parsed:
+                raise ValueError("Malformed JSON on retry")
+        except Exception as retry_e:
+            logger.warning(f"[evidence_service] Retry failed: {retry_e}. Using fallback (empty evidence).")
+            fallback_used = True
+            parsed = {}
+            
+    collection = _build_evidence_collection(parsed, ctx.candidate_segments)
+    
+    processing_ms = int((time.time() - start_time) * 1000)
+    
+    collection.metadata = {
+        "model": "ollama", # Hardcoded abstraction alias for now
+        "prompt_version": 2,
+        "processing_started": datetime.fromtimestamp(start_time).isoformat(),
+        "processing_finished": datetime.now().isoformat(),
+        "processing_ms": processing_ms,
+        "retry_used": retry_used,
+        "fallback_used": fallback_used,
+        "candidate_word_count": word_count,
+        "chunk_count": len(ctx.candidate_segments),
+        "behaviour_count": len(collection.behaviours),
+        "communication_count": len(collection.communication),
+        "technical_count": len(collection.technical),
+        "star_count": len(collection.star_extractions),
+    }
 
-    parsed = _parse_json_response(raw_response)
-    if not parsed:
-        logger.warning("[evidence_service] Failed to parse LLM response — returning empty evidence")
-        return EvidenceCollection()
+    logger.info(
+        f"[evidence_service] Evidence Extraction Complete\n"
+        f"Candidate Words: {word_count}\n"
+        f"Chunks: {len(ctx.candidate_segments)}\n"
+        f"Behaviours: {len(collection.behaviours)}\n"
+        f"STAR Stories: {len(collection.star_extractions)}\n"
+        f"Communication: {len(collection.communication)}\n"
+        f"Technical: {len(collection.technical)}\n"
+        f"Retry Used: {'Yes' if retry_used else 'No'}\n"
+        f"Fallback Used: {'Yes' if fallback_used else 'No'}\n"
+        f"Duration: {processing_ms / 1000:.1f} sec"
+    )
 
-    return _build_evidence_collection(parsed)
+    return collection
 
 
 # ── Prompt construction ───────────────────────────────────────────────────────
@@ -180,7 +241,7 @@ def _build_extraction_prompt(
     and technical competency evidence.
     """
     # Truncate very long transcripts to stay within context window
-    max_chars = 8000
+    max_chars = 12000
     if len(transcript) > max_chars:
         transcript = transcript[:max_chars] + "\n[... transcript truncated ...]"
 
@@ -205,7 +266,8 @@ Extract the following and respond with ONLY a JSON object. No markdown, no backt
       "action": "what the candidate did",
       "result": "the outcome achieved",
       "quality": 0.8,
-      "transcript_excerpt": "exact quote from transcript"
+      "transcript_excerpt": "exact quote from transcript",
+      "transcript_index": 0
     }}
   ],
   "behaviours": [
@@ -214,6 +276,7 @@ Extract the following and respond with ONLY a JSON object. No markdown, no backt
       "evidence": "what was observed",
       "reasoning": "why this indicates the behaviour",
       "transcript_excerpt": "exact quote from transcript",
+      "transcript_index": 0,
       "confidence": 0.8,
       "star_section": "situation|task|action|result|null"
     }}
@@ -224,6 +287,7 @@ Extract the following and respond with ONLY a JSON object. No markdown, no backt
       "assessment": "brief finding",
       "indicators": ["specific indicator 1", "specific indicator 2"],
       "transcript_excerpt": "exact quote from transcript",
+      "transcript_index": 0,
       "confidence": 0.8
     }}
   ],
@@ -235,27 +299,68 @@ Extract the following and respond with ONLY a JSON object. No markdown, no backt
       "missing_concepts": ["concept 1"],
       "inaccuracies": [],
       "transcript_excerpt": "exact quote from transcript",
+      "transcript_index": 0,
       "confidence": 0.8
     }}
   ],
   "overall_confidence": 0.7
 }}
 
-RULES:
+CRITICAL RULES:
+- Never infer unsupported behaviours.
+- Never assign competency scores.
+- Never recommend hiring.
+- Never predict personality.
+- Never invent evidence.
+- Return nothing if evidence is insufficient (empty arrays are correct).
 - Only extract evidence that is directly observable in the transcript.
-- Never fabricate quotes or behaviours.
-- If a section has no evidence, return an empty array.
-- Confidence values must reflect how clearly the evidence supports the finding.
 - transcript_excerpt must be actual text from the transcript, not paraphrased.
-- Each STAR example must have at least 2 of the 4 components to be included.
-- Behaviour types should match the predefined list above.
-- Be thorough but precise — quality over quantity."""
+- transcript_index must refer strictly to the exact [Chunk Index: X] of the transcript where the excerpt was found.
+- Confidence values must reflect how clearly the evidence supports the finding."""
+
+
+def _build_simplified_prompt(
+    transcript: str,
+    job_title: str,
+    skills_str: str,
+    candidate_name: str,
+    word_count: int,
+) -> str:
+    """
+    Build a simplified, highly structured prompt for retries when the LLM
+    fails to return valid JSON. This strips away complex instructions to ensure
+    parseable outputs.
+    """
+    max_chars = 12000
+    if len(transcript) > max_chars:
+        transcript = transcript[:max_chars] + "\n[... transcript truncated ...]"
+
+    return f"""Analyze the transcript and output ONLY a valid JSON object matching the schema below. Do not include any text outside the JSON.
+
+{{
+  "star_examples": [],
+  "behaviours": [],
+  "communication": [],
+  "technical": [],
+  "overall_confidence": 0.5
+}}
+
+Transcript:
+\"\"\"{transcript}\"\"\"
+
+Only populate arrays if clear evidence is found. Ensure transcript_index is an integer matching the chunk index."""
 
 
 # ── Evidence collection builder ───────────────────────────────────────────────
 
 
-def _build_evidence_collection(parsed: dict) -> EvidenceCollection:
+def _get_segment_info(index: int | None, segments: list[dict]) -> tuple[str | None, str | None]:
+    if index is not None and isinstance(index, int) and 0 <= index < len(segments):
+        return segments[index].get("id"), segments[index].get("timestamp")
+    return None, None
+
+
+def _build_evidence_collection(parsed: dict, segments: list[dict]) -> EvidenceCollection:
     """Convert the parsed LLM JSON response into typed evidence objects."""
     collection = EvidenceCollection()
 
@@ -280,6 +385,9 @@ def _build_evidence_collection(parsed: dict) -> EvidenceCollection:
         if not result.strip():
             missing.append("result")
 
+        transcript_index = star.get("transcript_index")
+        t_id, t_ts = _get_segment_info(transcript_index, segments)
+
         if present >= 2:  # only include if at least 2 components
             collection.star_extractions.append(STARExtraction(
                 situation=situation,
@@ -290,6 +398,9 @@ def _build_evidence_collection(parsed: dict) -> EvidenceCollection:
                 completeness=present / 4,
                 missing_sections=missing,
                 transcript_reference=star.get("transcript_excerpt", ""),
+                transcript_index=transcript_index,
+                transcript_id=t_id,
+                timestamp=t_ts,
                 confidence=star.get("quality", overall_confidence),
             ))
 
@@ -298,11 +409,18 @@ def _build_evidence_collection(parsed: dict) -> EvidenceCollection:
         btype = beh.get("type", "")
         if not btype:
             continue
+        
+        transcript_index = beh.get("transcript_index")
+        t_id, t_ts = _get_segment_info(transcript_index, segments)
+
         collection.behaviours.append(BehaviourEvidence(
             evidence_type=btype,
             behaviour_type=btype,
             evidence_text=beh.get("evidence", ""),
             transcript_reference=beh.get("transcript_excerpt", ""),
+            transcript_index=transcript_index,
+            transcript_id=t_id,
+            timestamp=t_ts,
             reasoning=beh.get("reasoning", ""),
             confidence=beh.get("confidence", overall_confidence),
             star_section=beh.get("star_section"),
@@ -314,6 +432,10 @@ def _build_evidence_collection(parsed: dict) -> EvidenceCollection:
         dimension = comm.get("dimension", "")
         if not dimension:
             continue
+        
+        transcript_index = comm.get("transcript_index")
+        t_id, t_ts = _get_segment_info(transcript_index, segments)
+
         collection.communication.append(CommunicationEvidence(
             evidence_type="communication",
             dimension=dimension,
@@ -321,6 +443,9 @@ def _build_evidence_collection(parsed: dict) -> EvidenceCollection:
             indicators=comm.get("indicators", []),
             evidence_text=comm.get("assessment", ""),
             transcript_reference=comm.get("transcript_excerpt", ""),
+            transcript_index=transcript_index,
+            transcript_id=t_id,
+            timestamp=t_ts,
             confidence=comm.get("confidence", overall_confidence),
             source="evidence_service",
         ))
@@ -330,6 +455,10 @@ def _build_evidence_collection(parsed: dict) -> EvidenceCollection:
         skill = tech.get("skill", "")
         if not skill:
             continue
+
+        transcript_index = tech.get("transcript_index")
+        t_id, t_ts = _get_segment_info(transcript_index, segments)
+
         collection.technical.append(TechnicalEvidence(
             evidence_type="technical",
             skill=skill,
@@ -339,19 +468,14 @@ def _build_evidence_collection(parsed: dict) -> EvidenceCollection:
             inaccuracies=tech.get("inaccuracies", []),
             evidence_text=f"{skill}: {tech.get('depth', 'surface')} knowledge",
             transcript_reference=tech.get("transcript_excerpt", ""),
+            transcript_index=transcript_index,
+            transcript_id=t_id,
+            timestamp=t_ts,
             confidence=tech.get("confidence", overall_confidence),
             source="evidence_service",
         ))
 
     # Build the ID index for O(1) lookups
     collection.build_index()
-
-    logger.info(
-        f"[evidence_service] Extraction complete: "
-        f"{len(collection.star_extractions)} STAR, "
-        f"{len(collection.behaviours)} behaviours, "
-        f"{len(collection.communication)} communication, "
-        f"{len(collection.technical)} technical"
-    )
 
     return collection
