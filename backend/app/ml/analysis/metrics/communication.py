@@ -51,7 +51,7 @@ class CommunicationMetric:
         components: list[SignalComponent] = []
         evidence: list[dict] = []
 
-        if not ctx.full_transcript or not ctx.full_transcript.strip():
+        if not ctx.candidate_transcript or not ctx.candidate_transcript.strip():
             return MetricResult(
                 name=self.name,
                 score=0,
@@ -64,7 +64,7 @@ class CommunicationMetric:
                 signals_used=[],
             )
 
-        words = ctx.full_transcript.lower().split()
+        words = ctx.candidate_transcript.lower().split()
         word_count = max(len(words), 1)
 
         # ── Signal 1: Vocabulary diversity ───────────────────────────────
@@ -118,7 +118,7 @@ class CommunicationMetric:
                     ))
 
         # ── Signal 3: STAR structure ─────────────────────────────────────
-        text_lower = ctx.full_transcript.lower()
+        text_lower = ctx.candidate_transcript.lower()
         total_star_hits = 0
         star_hits = {}
         for component_name, keywords in self.STAR_KEYWORDS.items():

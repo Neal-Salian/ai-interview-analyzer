@@ -81,8 +81,8 @@ class ConfidenceMetric:
                     })
 
         # ── Signal 2: Filler word frequency ──────────────────────────────
-        if ctx.full_transcript:
-            text_lower = ctx.full_transcript.lower()
+        if ctx.candidate_transcript:
+            text_lower = ctx.candidate_transcript.lower()
             words = text_lower.split()
             word_count = max(len(words), 1)
 
