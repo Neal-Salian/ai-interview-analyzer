@@ -101,6 +101,13 @@ class SessionContext:
     transcripts: list[dict] = field(default_factory=list)
     full_transcript: str = ""
 
+    # Phase 0 — Candidate Attribution
+    candidate_transcript: str = ""
+    recruiter_transcript: str = ""
+    conversation_timeline: list[dict] = field(default_factory=list)
+    candidate_segments: list[dict] = field(default_factory=list)
+    recruiter_segments: list[dict] = field(default_factory=list)
+
     # Phase 2 — Attention tracking data
     attention_events: list[dict] = field(default_factory=list)
 
