@@ -61,7 +61,7 @@ class LeadershipMetric:
         components: list[SignalComponent] = []
         evidence: list[dict] = []
 
-        if not ctx.full_transcript or not ctx.full_transcript.strip():
+        if not ctx.candidate_transcript or not ctx.candidate_transcript.strip():
             return MetricResult(
                 name=self.name,
                 score=0,
@@ -74,7 +74,7 @@ class LeadershipMetric:
                 signals_used=[],
             )
 
-        text_lower = ctx.full_transcript.lower()
+        text_lower = ctx.candidate_transcript.lower()
         word_count = max(len(text_lower.split()), 1)
 
         # ── Signal 1: Leadership keywords ────────────────────────────────

@@ -59,7 +59,7 @@ class TeamworkMetric:
         components: list[SignalComponent] = []
         evidence: list[dict] = []
 
-        if not ctx.full_transcript or not ctx.full_transcript.strip():
+        if not ctx.candidate_transcript or not ctx.candidate_transcript.strip():
             return MetricResult(
                 name=self.name,
                 score=0,
@@ -72,7 +72,7 @@ class TeamworkMetric:
                 signals_used=[],
             )
 
-        text_lower = ctx.full_transcript.lower()
+        text_lower = ctx.candidate_transcript.lower()
         words = text_lower.split()
         word_count = max(len(words), 1)
 
