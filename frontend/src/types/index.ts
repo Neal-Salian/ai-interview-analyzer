@@ -41,7 +41,7 @@ export interface MetricResult {
 }
 
 export interface WSMessage {
-    type: 'history' | 'emotion' | 'transcript' | 'question' | 'metric_update' | 'ping' | 'attention' | 'integrity_alert' | 'sentiment'
+    type: 'history' | 'emotion' | 'transcript' | 'question' | 'metric_update' | 'ping' | 'attention' | 'integrity_alert' | 'sentiment' | 'enrollment_status' | 'tracking_status'
     // history
     emotions?: EmotionFrame[]
     transcripts?: TranscriptChunk[]
@@ -62,4 +62,7 @@ export interface WSMessage {
     // sentiment
     label?: string
     score?: number
+    // enrollment / tracking
+    status?: string
+    reason?: string
 }
