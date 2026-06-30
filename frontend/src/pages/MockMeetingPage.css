@@ -1,0 +1,261 @@
+.mock-meeting-page {
+    min-height: 100vh;
+    background-color: var(--bg-app);
+    display: flex;
+    flex-direction: column;
+}
+
+.mock-main {
+    flex: 1;
+    max-width: 1000px;
+    margin: 0 auto;
+    width: 100%;
+    padding: 32px 24px;
+    box-sizing: border-box;
+}
+
+.dev-banner {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 24px;
+    background-color: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    border-radius: 12px;
+    margin-bottom: 32px;
+}
+
+.dev-banner .warning-icon {
+    color: #f59e0b;
+    font-size: 28px;
+}
+
+.dev-banner-text strong {
+    color: #f59e0b;
+    font-size: 15px;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.dev-banner-text p {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin: 0;
+}
+
+.mock-header {
+    margin-bottom: 32px;
+}
+
+.mock-header h1 {
+    font-family: var(--font-heading);
+    font-size: 28px;
+    color: var(--text-primary);
+    margin: 0 0 8px 0;
+}
+
+.mock-subtitle {
+    color: var(--text-secondary);
+    font-size: 16px;
+    margin: 0;
+}
+
+.mock-content-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+}
+
+@media (max-width: 768px) {
+    .mock-content-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.mock-card {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+}
+
+.card-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--font-heading);
+    font-size: 18px;
+    color: var(--text-primary);
+    margin: 0 0 24px 0;
+}
+
+.card-title .material-symbols-outlined {
+    color: var(--brand-primary);
+}
+
+.instructions-list {
+    margin: 0;
+    padding-left: 20px;
+    color: var(--text-secondary);
+    font-size: 15px;
+    line-height: 1.6;
+}
+
+.instructions-list li {
+    margin-bottom: 12px;
+}
+
+.instructions-list li:last-child {
+    margin-bottom: 0;
+}
+
+.instructions-list strong {
+    color: var(--text-primary);
+}
+
+.detail-row {
+    margin-bottom: 20px;
+}
+
+.detail-row label {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.code-block {
+    background-color: var(--bg-surface-high);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-family: monospace;
+    font-size: 14px;
+    color: var(--text-primary);
+    overflow-x: auto;
+}
+
+.copyable-field {
+    display: flex;
+    gap: 8px;
+}
+
+.copyable-field .code-block {
+    flex: 1;
+}
+
+.copy-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--bg-surface-high);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    width: 44px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: all 0.2s ease;
+}
+
+.copy-btn:hover {
+    background-color: var(--bg-surface-hover);
+    color: var(--text-primary);
+}
+
+.copy-btn.copied {
+    color: var(--success);
+    border-color: var(--success);
+    background-color: rgba(16, 185, 129, 0.08);
+}
+
+.status-container {
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+}
+
+.status-label {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin: 0 0 12px 0;
+    font-weight: 500;
+}
+
+.runtime-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background-color: var(--bg-surface-high);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+}
+
+.runtime-status.ready .status-icon, .runtime-status.ready .status-text {
+    color: var(--success);
+}
+.runtime-status.running .status-icon, .runtime-status.running .status-text {
+    color: var(--success);
+}
+.runtime-status.failed .status-icon, .runtime-status.failed .status-text {
+    color: var(--danger);
+}
+.runtime-status.not_initialized .status-icon, .runtime-status.not_initialized .status-text {
+    color: var(--text-secondary);
+}
+.runtime-status.initializing .status-icon, .runtime-status.starting_rtmp .status-icon {
+    color: #f59e0b;
+}
+.runtime-status.initializing .status-text, .runtime-status.starting_rtmp .status-text {
+    color: #f59e0b;
+}
+
+.status-text {
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.actions-container {
+    margin-top: 32px;
+}
+
+.dashboard-btn {
+    width: 100%;
+    padding: 14px;
+    font-size: 16px;
+    font-weight: 600;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    border-radius: 12px;
+}
+
+.mock-loading, .mock-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    min-height: 50vh;
+}
+
+.mock-error .error-icon {
+    font-size: 48px;
+    color: var(--danger);
+    margin-bottom: 16px;
+}
+
+.mock-loading .spin-icon {
+    font-size: 48px;
+    color: var(--brand-primary);
+    margin-bottom: 16px;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
