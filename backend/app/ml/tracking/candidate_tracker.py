@@ -20,6 +20,7 @@ import logging
 import numpy as np
 from enum import Enum
 from typing import Optional
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,8 @@ def create_tracking_metadata() -> dict:
         "stabilisation_frames_remaining": 0,
         # ── Tracking timeline marker ───────────────────────────────────
         "tracking_acquired_at": None,
+        # ── Enrollment ─────────────────────────────────────────────────
+        "enrollment_error": None,
     }
 
 
@@ -158,23 +161,38 @@ def generate_embedding(frame: np.ndarray) -> Optional[list]:
         return None
 
 
-def enroll_from_frames(frames: list[np.ndarray]) -> Optional[dict]:
+@dataclass
+class EnrollmentResult:
+    success: bool
+    reason: str
+    embedding: Optional[list] = None
+    bbox: Optional[tuple] = None
+
+
+def enroll_from_frames(frames: list[np.ndarray]) -> EnrollmentResult:
     """
     Perform atomic enrollment from a batch of captured frames.
 
     Steps:
       1. For each frame, detect faces and apply quality filters.
-      2. Generate embeddings for accepted frames.
-      3. Average the embeddings to produce a robust reference.
+      2. Enforce exactly one face per frame.
+      3. Generate embeddings for accepted frames.
+      4. Average the embeddings to produce a robust reference.
 
     Returns:
-        {"embedding": list, "bbox": (x, y, w, h)} or None on failure.
+        EnrollmentResult object containing success status, reason, and optionally embedding/bbox.
     """
     _ensure_deepface_model()
     from deepface import DeepFace
 
     embeddings = []
     best_bbox = None
+    
+    counts = {
+        "no_face_detected": 0,
+        "multiple_faces_detected": 0,
+        "insufficient_quality": 0
+    }
 
     for frame in frames:
         try:
@@ -184,12 +202,19 @@ def enroll_from_frames(frames: list[np.ndarray]) -> Optional[dict]:
                 detector_backend=_deepface_detector,
                 enforce_detection=False,
             )
+            
             if not results or len(results) == 0:
+                counts["no_face_detected"] += 1
+                continue
+                
+            if len(results) > 1:
+                counts["multiple_faces_detected"] += 1
                 continue
 
             face_region = results[0].get("facial_area", {})
 
             if not assess_frame_quality(frame, face_region):
+                counts["insufficient_quality"] += 1
                 continue
 
             embeddings.append(results[0]["embedding"])
@@ -207,13 +232,20 @@ def enroll_from_frames(frames: list[np.ndarray]) -> Optional[dict]:
             continue
 
     if not embeddings:
-        logger.warning("[TRACKER] Enrollment failed — no frames passed quality gate")
-        return None
+        logger.warning(f"[TRACKER] Enrollment failed. Rejection counts: {counts}")
+        
+        # Determine primary reason for failure based on counts
+        if counts["multiple_faces_detected"] > 0:
+            return EnrollmentResult(success=False, reason="multiple_faces_detected")
+        elif counts["insufficient_quality"] > 0:
+            return EnrollmentResult(success=False, reason="insufficient_quality")
+        else:
+            return EnrollmentResult(success=False, reason="no_face_detected")
 
     # Average the embeddings for robustness
     avg_embedding = np.mean(embeddings, axis=0).tolist()
     logger.info(f"[TRACKER] Enrollment succeeded — averaged {len(embeddings)} embeddings")
-    return {"embedding": avg_embedding, "bbox": best_bbox}
+    return EnrollmentResult(success=True, reason="success", embedding=avg_embedding, bbox=best_bbox)
 
 
 # ── Verification ────────────────────────────────────────────────────────────
