@@ -1,24 +1,29 @@
 """
-Communication effectiveness metric plugin.
+Communication effectiveness metric plugin — Enterprise Competency Framework.
 
-Assesses how effectively the candidate communicates.
+Evaluates communication competency based on structured evidence:
+  - clarity, articulation, structure, persuasion, listening, speaking_confidence
 
-Signals:
-  - Vocabulary diversity (unique word ratio)
-  - Response coherence (average words per response)
-  - STAR structure usage (Situation, Task, Action, Result keywords)
-  - Sentiment consistency (stable positive tone)
+V3.0: Evidence-first evaluation.  When structured evidence is available
+(from the preprocessing pipeline), the plugin scores pre-extracted
+communication observations.  Falls back to keyword-based analysis when
+evidence is unavailable (backward compatibility).
 
 v2.0: Confidence-weighted scoring with sample-size guards, keyword-density
       confidence, and per-signal confidence breakdown.
 """
 
-from app.ml.analysis.interfaces import MetricResult, SessionContext
+from app.ml.analysis.interfaces import (
+    MetricResult,
+    EnhancedMetricResult,
+    SessionContext,
+)
 from app.ml.analysis.scoring_utils import (
     confidence_weighted_average,
     sample_size_confidence,
     keyword_density_confidence,
     score_to_level,
+    evidence_based_confidence,
     SignalComponent,
 )
 from app.ml.analysis.registry import register_metric
@@ -27,10 +32,14 @@ from app.ml.analysis.registry import register_metric
 class CommunicationMetric:
     name = "Communication"
     description = (
-        "Evaluates communication effectiveness including vocabulary diversity, "
-        "response structure, and speaking clarity."
+        "Evaluates communication effectiveness including clarity, articulation, "
+        "structure, persuasion, listening, and speaking confidence."
     )
-    version = "2.0"
+    version = "3.0"
+    author = "Platform Team"
+    supported_engine = 2
+    requires = {"communication_evidence": 1}
+    plugin_metadata = {"category": "competency", "tier": "core"}
 
     STAR_KEYWORDS = {
         "situation": ["situation", "context", "background", "scenario", "when"],
@@ -48,10 +57,140 @@ class CommunicationMetric:
     IDEAL_EMOTION_FRAMES = 50
 
     def compute(self, ctx: SessionContext) -> MetricResult:
+        # ── Try evidence-based evaluation first ───────────────────────────
+        evidence = getattr(ctx, "evidence", None)
+        if evidence and not evidence.is_empty() and evidence.communication:
+            return self._evidence_based_compute(ctx, evidence)
+
+        # ── Fallback: keyword-based evaluation (V2 logic) ────────────────
+        return self._keyword_based_compute(ctx)
+
+    def _evidence_based_compute(
+        self, ctx: SessionContext, evidence
+    ) -> EnhancedMetricResult:
+        """Score communication using pre-extracted evidence objects."""
+        components: list[SignalComponent] = []
+        sub_dimensions: list[dict] = []
+        evidence_ids: list[str] = []
+        transcript_refs: list[str] = []
+
+        # ── Score each communication dimension ────────────────────────────
+        for dimension in ["clarity", "articulation", "structure",
+                          "persuasion", "listening", "speaking_confidence"]:
+            dim_evidence = evidence.get_communication_by_dimension(dimension)
+            if not dim_evidence:
+                continue
+
+            # Average confidence across evidence items for this dimension
+            avg_conf = sum(e.confidence for e in dim_evidence) / len(dim_evidence)
+
+            # Score based on the assessment quality
+            dim_score = int(avg_conf * 80 + 20)  # 20-100 range based on confidence
+
+            components.append(SignalComponent(
+                score=max(0, min(100, dim_score)),
+                confidence=avg_conf,
+                signal_name=f"communication_{dimension}",
+            ))
+
+            for e in dim_evidence:
+                evidence_ids.append(e.id)
+                if e.transcript_reference:
+                    transcript_refs.append(e.transcript_reference)
+
+            sub_dimensions.append({
+                "dimension": dimension,
+                "score": dim_score,
+                "confidence": round(avg_conf, 3),
+                "evidence_count": len(dim_evidence),
+                "assessment": dim_evidence[0].assessment if dim_evidence else "",
+            })
+
+        # ── Also include STAR signal if available ─────────────────────────
+        if evidence.star_extractions:
+            star_score = int(
+                sum(s.completeness for s in evidence.star_extractions)
+                / len(evidence.star_extractions) * 100
+            )
+            star_confidence = sum(
+                s.confidence for s in evidence.star_extractions
+            ) / len(evidence.star_extractions)
+
+            components.append(SignalComponent(
+                score=star_score,
+                confidence=star_confidence,
+                signal_name="star_structure",
+            ))
+
+        # ── Aggregate ─────────────────────────────────────────────────────
+        if not components:
+            return self._keyword_based_compute(ctx)
+
+        result = confidence_weighted_average(components)
+        signals = [c["signal_name"] for c in components]
+
+        # Build reasoning
+        strong_dims = [d["dimension"] for d in sub_dimensions if d["score"] >= 70]
+        weak_dims = [d["dimension"] for d in sub_dimensions if d["score"] < 50]
+
+        reasoning_parts = []
+        if strong_dims:
+            reasoning_parts.append(
+                f"Strong performance in: {', '.join(strong_dims)}."
+            )
+        if weak_dims:
+            reasoning_parts.append(
+                f"Areas for improvement: {', '.join(weak_dims)}."
+            )
+        reasoning_parts.append(
+            f"Assessment based on {len(evidence.communication)} "
+            f"communication observations."
+        )
+
+        recommendations = []
+        if weak_dims:
+            recommendations.append(
+                f"Consider probing deeper into {', '.join(weak_dims)} "
+                f"in follow-up interviews."
+            )
+        if result["final_score"] >= 80:
+            recommendations.append(
+                "Strong communicator — suitable for client-facing roles."
+            )
+
+        return EnhancedMetricResult(
+            name=self.name,
+            score=result["final_score"],
+            raw_score=result["raw_score"],
+            level=score_to_level(result["final_score"]),
+            confidence=result["overall_confidence"],
+            confidence_details=result["confidence_details"],
+            evidence=[{"source": "evidence_pipeline", "count": len(evidence.communication)}],
+            explanation=(
+                f"Communication assessed using {len(components)} signal(s): "
+                f"{', '.join(signals)}."
+            ),
+            signals_used=signals,
+            summary=(
+                f"Interview evidence suggests "
+                f"{'strong' if result['final_score'] >= 70 else 'moderate'} "
+                f"communication effectiveness."
+            ),
+            reasoning=" ".join(reasoning_parts),
+            recommendations=recommendations,
+            transcript_references=transcript_refs[:5],
+            evidence_ids=evidence_ids,
+            sub_dimensions=sub_dimensions,
+            metadata=self.plugin_metadata,
+        )
+
+    def _keyword_based_compute(self, ctx: SessionContext) -> MetricResult:
+        """V2 keyword-based fallback logic (unchanged for backward compatibility)."""
         components: list[SignalComponent] = []
         evidence: list[dict] = []
 
-        if not ctx.candidate_transcript or not ctx.candidate_transcript.strip():
+        transcript = getattr(ctx, "candidate_transcript", "") or ctx.full_transcript
+        if not transcript or not transcript.strip():
             return MetricResult(
                 name=self.name,
                 score=0,
@@ -64,7 +203,7 @@ class CommunicationMetric:
                 signals_used=[],
             )
 
-        words = ctx.candidate_transcript.lower().split()
+        words = transcript.lower().split()
         word_count = max(len(words), 1)
 
         # ── Signal 1: Vocabulary diversity ───────────────────────────────
@@ -74,7 +213,6 @@ class CommunicationMetric:
         if vocab_confidence > 0:
             unique_words = set(words)
             diversity_ratio = len(unique_words) / word_count
-            # Good diversity is around 0.4-0.6 for spoken language
             diversity_score = int(min(diversity_ratio * 200, 100))
 
             components.append(SignalComponent(
@@ -103,13 +241,12 @@ class CommunicationMetric:
                 ]
                 if chunk_word_counts:
                     avg_words = sum(chunk_word_counts) / len(chunk_word_counts)
-                    # 20-50 words per chunk is good; too short = terse, too long = rambling
                     if avg_words < 10:
-                        coherence_score = int(avg_words * 5)  # very short
+                        coherence_score = int(avg_words * 5)
                     elif avg_words <= 50:
-                        coherence_score = int(min(avg_words * 2, 100))  # good range
+                        coherence_score = int(min(avg_words * 2, 100))
                     else:
-                        coherence_score = int(max(100 - (avg_words - 50), 40))  # rambling
+                        coherence_score = int(max(100 - (avg_words - 50), 40))
 
                     components.append(SignalComponent(
                         score=max(0, min(100, coherence_score)),
@@ -118,7 +255,7 @@ class CommunicationMetric:
                     ))
 
         # ── Signal 3: STAR structure ─────────────────────────────────────
-        text_lower = ctx.candidate_transcript.lower()
+        text_lower = transcript.lower()
         total_star_hits = 0
         star_hits = {}
         for component_name, keywords in self.STAR_KEYWORDS.items():
@@ -127,15 +264,13 @@ class CommunicationMetric:
             total_star_hits += hits
 
         components_present = sum(1 for v in star_hits.values() if v > 0)
-        # STAR confidence: needs sufficient transcript length to be meaningful
         star_confidence = keyword_density_confidence(
             hits=total_star_hits,
             word_count=word_count,
-            min_words=100,  # STAR is unreliable on very short transcripts
+            min_words=100,
             ideal_words=300,
         )
         if star_confidence > 0:
-            # 4/4 STAR components → 100, 3/4 → 75, etc.
             star_score = int((components_present / 4) * 100)
 
             components.append(SignalComponent(
@@ -167,7 +302,6 @@ class CommunicationMetric:
                     1 for e in ctx.emotions
                     if e.get("dominant_emotion") == "neutral"
                 )
-                # Positive + neutral = stable communicator
                 stable_ratio = (positive_count + neutral_count) / n
                 tone_score = int(stable_ratio * 100)
 
