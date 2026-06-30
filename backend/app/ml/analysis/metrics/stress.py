@@ -1,24 +1,27 @@
 """
-Stress indicators metric plugin.
+Stress indicators metric plugin — Enterprise Competency Framework.
 
 Detects observable stress signals — NOT a psychological diagnosis.
 
-Signals:
-  - Negative emotion spikes (fear, angry clusters)
-  - Speaking pace variance (rapid/slow shifts in transcript chunk lengths)
-  - Gaze instability (frequent direction changes)
-  - Integrity events (face missing, multiple faces under pressure)
+V3.0: Evidence-first evaluation. Integrates structured evidence (from the
+preprocessing pipeline) with physiological signals (emotions, attention).
+Falls back to pure physiological analysis when evidence is unavailable.
 
 v2.0: Confidence-weighted scoring with raised sample-size thresholds,
       outlier removal on pace variance, and per-signal confidence breakdown.
 """
 
-from app.ml.analysis.interfaces import MetricResult, SessionContext
+from app.ml.analysis.interfaces import (
+    MetricResult,
+    EnhancedMetricResult,
+    SessionContext,
+)
 from app.ml.analysis.scoring_utils import (
     confidence_weighted_average,
     sample_size_confidence,
     remove_outliers_iqr,
     score_to_level,
+    evidence_based_confidence,
     SignalComponent,
 )
 from app.ml.analysis.registry import register_metric
@@ -28,14 +31,18 @@ class StressMetric:
     name = "Stress Indicators"
     description = (
         "Detects observable stress signals based on emotion patterns, "
-        "speech variance, and behavioral consistency. "
+        "speech variance, behavioral consistency, and pressure management. "
         "Reports observable signals only — not a clinical assessment."
     )
-    version = "2.0"
+    version = "3.0"
+    author = "Platform Team"
+    supported_engine = 2
+    requires = {"behaviour_evidence": 1}
+    plugin_metadata = {"category": "competency", "tier": "core"}
 
     STRESS_EMOTIONS = {"angry", "fear", "disgust"}
 
-    # Minimum data thresholds — raised from v1.0
+    # Minimum data thresholds
     MIN_EMOTION_FRAMES = 10
     IDEAL_EMOTION_FRAMES = 50
     MIN_TRANSCRIPT_CHUNKS = 5
@@ -46,10 +53,103 @@ class StressMetric:
     IDEAL_INTEGRITY_EVENTS = 10
 
     def compute(self, ctx: SessionContext) -> MetricResult:
+        # ── Try evidence-based evaluation first ───────────────────────────
+        evidence = getattr(ctx, "evidence", None)
+        if evidence and not evidence.is_empty():
+            rel_types = ["pressure_management", "stress_handling", "composure"]
+            behaviours = []
+            for t in rel_types:
+                behaviours.extend(evidence.get_behaviours_by_type(t))
+            
+            if behaviours:
+                return self._evidence_based_compute(ctx, evidence, behaviours)
+
+        # ── Fallback: keyword-based evaluation (V2 logic) ────────────────
+        return self._keyword_based_compute(ctx)
+
+    def _evidence_based_compute(
+        self, ctx: SessionContext, evidence, behaviours
+    ) -> EnhancedMetricResult:
+        """Score stress using pre-extracted behaviour evidence combined with raw physiological signals."""
         components: list[SignalComponent] = []
-        evidence: list[dict] = []
-        # For stress, higher internal score = MORE stress detected
-        # We invert at the end: final_score = 100 - stress_level
+        sub_dimensions: list[dict] = []
+        evidence_ids: list[str] = []
+        transcript_refs: list[str] = []
+
+        avg_confidence = sum(b.confidence for b in behaviours) / len(behaviours)
+        base_score = min(int(len(behaviours) * 20 + avg_confidence * 20), 100)
+
+        components.append(SignalComponent(
+            score=max(0, min(100, base_score)),
+            confidence=avg_confidence,
+            signal_name="composure_behaviours",
+        ))
+
+        # Track evidence
+        for b in behaviours:
+            evidence_ids.append(b.id)
+            if b.transcript_reference:
+                transcript_refs.append(b.transcript_reference)
+
+        # 2. Add physiological signals if available
+        phys_components, phys_evidence = self._get_physiological_signals(ctx)
+        components.extend(phys_components)
+
+        # ── Aggregate ─────────────────────────────────────────────────────
+        result = confidence_weighted_average(components)
+        signals = [c["signal_name"] for c in components]
+
+        reasoning_parts = []
+        if phys_components:
+            reasoning_parts.append(
+                f"Combined behavioural composure analysis with physiological stress signals "
+                f"({len(phys_components)} sensor metrics used)."
+            )
+        else:
+            reasoning_parts.append(
+                "Assessed based on transcript-level composure (physiological data unavailable)."
+            )
+        
+        recommendations = []
+        if result["final_score"] >= 70:
+            recommendations.append(
+                "Strong composure under pressure. Suitable for high-stakes or time-sensitive roles."
+            )
+        else:
+            recommendations.append(
+                "Observable stress indicators present. Provide a supportive onboarding environment."
+            )
+
+        return EnhancedMetricResult(
+            name=self.name,
+            score=result["final_score"],
+            raw_score=result["raw_score"],
+            level=score_to_level(result["final_score"]),
+            confidence=result["overall_confidence"],
+            confidence_details=result["confidence_details"],
+            evidence=[{"source": "evidence_pipeline", "count": len(behaviours)}] + phys_evidence,
+            explanation=(
+                f"Stress indicators assessed using {len(components)} signal(s): "
+                f"{', '.join(signals)}."
+            ),
+            signals_used=signals,
+            summary=(
+                f"Interview evidence suggests "
+                f"{'strong' if result['final_score'] >= 70 else 'moderate'} "
+                f"composure and pressure management."
+            ),
+            reasoning=" ".join(reasoning_parts),
+            recommendations=recommendations,
+            transcript_references=transcript_refs[:5],
+            evidence_ids=evidence_ids,
+            sub_dimensions=sub_dimensions,
+            metadata=self.plugin_metadata,
+        )
+
+    def _get_physiological_signals(self, ctx: SessionContext) -> tuple[list[SignalComponent], list[dict]]:
+        """Extract physiological stress signals (used in both V2 and V3)."""
+        components = []
+        evidence = []
 
         # ── Signal 1: Negative emotion clusters ─────────────────────────
         if ctx.emotions:
@@ -64,7 +164,6 @@ class StressMetric:
                 )
                 stress_ratio = stress_count / n
 
-                # Check for clusters (3+ consecutive stress emotions)
                 cluster_count = 0
                 streak = 0
                 for e in ctx.emotions:
@@ -75,7 +174,6 @@ class StressMetric:
                     else:
                         streak = 0
 
-                # stress_ratio contributes 0-100 (higher = more stress)
                 emotion_stress = int(stress_ratio * 100)
                 if cluster_count > 0:
                     emotion_stress = min(100, emotion_stress + cluster_count * 10)
@@ -85,9 +183,7 @@ class StressMetric:
                         "source": "emotion_detection",
                     })
 
-                # Invert: high stress → low composure score
                 composure_score = max(0, min(100, 100 - emotion_stress))
-
                 components.append(SignalComponent(
                     score=composure_score,
                     confidence=sig_confidence,
@@ -104,17 +200,12 @@ class StressMetric:
                 chunk_lengths = [
                     len(t.get("text", "").split()) for t in ctx.transcripts
                 ]
-                # Apply outlier removal to reduce noise from transcription artifacts
-                cleaned_lengths = remove_outliers_iqr(
-                    [float(l) for l in chunk_lengths]
-                )
+                cleaned_lengths = remove_outliers_iqr([float(l) for l in chunk_lengths])
                 avg_len = sum(cleaned_lengths) / max(len(cleaned_lengths), 1)
                 if avg_len > 0 and len(cleaned_lengths) >= 3:
                     variance = sum(
                         (l - avg_len) ** 2 for l in cleaned_lengths
                     ) / len(cleaned_lengths)
-                    # High variance = inconsistent pace = stress signal
-                    # Normalize: variance < 50 is stable, > 200 is very erratic
                     pace_stress = int(min(variance / 2, 100))
                     composure_score = max(0, min(100, 100 - pace_stress))
 
@@ -147,7 +238,6 @@ class StressMetric:
                     prev_dir = curr_dir
 
                 change_ratio = direction_changes / n
-                # High change ratio = restless gaze = stress signal
                 gaze_stress = int(min(change_ratio * 150, 100))
                 composure_score = max(0, min(100, 100 - gaze_stress))
 
@@ -165,7 +255,6 @@ class StressMetric:
                 if ie.get("severity") in ("warning", "critical")
             )
             if warning_count > 0:
-                # Cap confidence at 0.5 for < MIN_INTEGRITY_EVENTS events
                 sig_confidence = min(
                     sample_size_confidence(
                         n, self.MIN_INTEGRITY_EVENTS, self.IDEAL_INTEGRITY_EVENTS
@@ -181,6 +270,12 @@ class StressMetric:
                         confidence=sig_confidence,
                         signal_name="behavioral_anomalies",
                     ))
+
+        return components, evidence
+
+    def _keyword_based_compute(self, ctx: SessionContext) -> MetricResult:
+        """V2 keyword-based fallback logic."""
+        components, evidence = self._get_physiological_signals(ctx)
 
         # ── Aggregate ────────────────────────────────────────────────────
         if not components:
