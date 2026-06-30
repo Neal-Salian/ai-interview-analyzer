@@ -1,12 +1,24 @@
 """
-Preprocessing pipeline Phase 0.
+Preprocessing pipeline — builds and enriches SessionContext before plugins.
 
-Builds the SessionContext from the database and runs Candidate Attribution
-to separate the Candidate and Recruiter transcripts before metrics are computed.
+This module orchestrates the full preprocessing pipeline:
+
+    DB Queries → Raw SessionContext
+    → Candidate Attribution (speaker separation)
+    → Evidence Extraction (single LLM call via evidence_service)
+    → Enriched SessionContext
+    → Metric Plugins
+
+It runs ONCE during session teardown (via aggregator.py).  Plugins only
+consume the enriched context — they never call the LLM independently.
+
+If any preprocessing step fails, the pipeline returns a partially enriched
+SessionContext and plugins fall back to their existing keyword-based logic.
 """
 
 import asyncio
 import logging
+import re
 from sqlalchemy.orm import Session as DBSession
 
 from app.ml.analysis.interfaces import SessionContext
@@ -159,16 +171,25 @@ def _fetch_raw_context(db: DBSession, session_id: str) -> SessionContext:
 
 async def build_enriched_session_context(db: DBSession, session_id: str) -> SessionContext:
     """
-    Builds the base context from DB, then performs Candidate Attribution
-    to populate the candidate and recruiter separated transcripts.
+    Builds the base context from DB, performs Candidate Attribution,
+    then runs the Evidence Extraction pipeline (single LLM call).
+
+    Pipeline:
+      1. DB queries → raw SessionContext
+      2. Candidate Attribution → speaker-separated transcripts
+      3. Evidence Extraction → STAR, behaviours, communication, technical
+      4. Return enriched SessionContext
+
+    If any step fails, the pipeline continues with partial enrichment.
     """
     from app.db.models import Session as InterviewSession
     
     logger.info(f"[preprocessing] Building context for session {session_id}")
     
-    # 1. Fetch raw data from DB (in a thread to avoid blocking event loop)
+    # ── Step 1: Fetch raw data from DB ────────────────────────────────────
     ctx = await asyncio.to_thread(_fetch_raw_context, db, session_id)
     
+    # ── Step 2: Candidate Attribution ─────────────────────────────────────
     # Check for persisted attribution to avoid rerunning
     session = await asyncio.to_thread(
         lambda: db.query(InterviewSession).filter(InterviewSession.id == session_id).first()
@@ -179,7 +200,6 @@ async def build_enriched_session_context(db: DBSession, session_id: str) -> Sess
         logger.info(f"[preprocessing] Using persisted attribution for session {session_id}")
         attribution_result = session.session_summary["attribution_result"]
     else:
-        # 2. Perform Phase 0 - Candidate Attribution
         logger.info(f"[preprocessing] Running candidate attribution for session {session_id}")
         attribution_result = await perform_attribution(
             transcripts=ctx.transcripts,
@@ -192,7 +212,6 @@ async def build_enriched_session_context(db: DBSession, session_id: str) -> Sess
         if session:
             def _update_session():
                 try:
-                    # SQLAlchemy JSONB requires replacing the whole dict or using flag_modified
                     from sqlalchemy.orm.attributes import flag_modified
                     summary = session.session_summary or {}
                     summary["attribution_result"] = attribution_result
@@ -205,7 +224,7 @@ async def build_enriched_session_context(db: DBSession, session_id: str) -> Sess
                     logger.error(f"[preprocessing] Failed to persist attribution: {e}")
             await asyncio.to_thread(_update_session)
     
-    # 3. Enrich the context
+    # Enrich with attribution
     ctx.conversation_timeline = attribution_result.get("segments", [])
     
     candidate_parts = []
@@ -230,5 +249,74 @@ async def build_enriched_session_context(db: DBSession, session_id: str) -> Sess
         f"Candidate words: {len(ctx.candidate_transcript.split())}, "
         f"Recruiter words: {len(ctx.recruiter_transcript.split())}"
     )
+
+    # ── Step 3: Evidence Extraction (single LLM call) ─────────────────────
+    # Uses the candidate transcript if available, otherwise full transcript.
+    await asyncio.to_thread(_run_evidence_extraction, ctx)
     
     return ctx
+
+
+def _run_evidence_extraction(ctx: SessionContext) -> None:
+    """
+    Run the evidence extraction pipeline (synchronous — called via to_thread).
+
+    This calls evidence_service.extract_evidence() ONCE and attaches the
+    result to ctx.evidence.  If extraction fails, ctx.evidence is set to
+    an empty EvidenceCollection so plugins fall back gracefully.
+    """
+    from app.ml.analysis.evidence_service import extract_evidence
+    from app.ml.analysis.evidence_types import EvidenceCollection
+
+    # Prefer candidate-only transcript (most relevant for competency analysis)
+    analysis_transcript = ctx.candidate_transcript or ctx.full_transcript
+    if not analysis_transcript or not analysis_transcript.strip():
+        logger.info(
+            "[preprocessing] No transcript for evidence extraction — "
+            "plugins will use fallback scoring"
+        )
+        ctx.evidence = EvidenceCollection()
+        return
+
+    # Clean the transcript
+    cleaned = _clean_transcript(analysis_transcript)
+
+    try:
+        evidence = extract_evidence(
+            transcript=cleaned,
+            job_title=ctx.job_title,
+            job_skills=ctx.job_skills,
+            candidate_name=ctx.candidate_name,
+        )
+        ctx.evidence = evidence
+        logger.info(
+            f"[preprocessing] Evidence extraction complete: "
+            f"{len(evidence.behaviours)} behaviours, "
+            f"{len(evidence.star_extractions)} STAR examples, "
+            f"{len(evidence.communication)} communication, "
+            f"{len(evidence.technical)} technical"
+        )
+    except Exception as e:
+        logger.warning(
+            f"[preprocessing] Evidence extraction failed: {e} — "
+            f"plugins will use fallback scoring"
+        )
+        ctx.evidence = EvidenceCollection()
+
+
+def _clean_transcript(text: str) -> str:
+    """
+    Clean and normalize transcript text for LLM analysis.
+
+    Operations:
+      - Strip leading/trailing whitespace
+      - Collapse multiple spaces/newlines
+      - Remove control characters
+    """
+    if not text:
+        return ""
+    # Remove control characters (except newlines and tabs)
+    cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
+    # Collapse multiple whitespace into single spaces
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned.strip()
