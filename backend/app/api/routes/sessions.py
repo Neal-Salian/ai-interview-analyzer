@@ -581,3 +581,28 @@ async def start_analysis(
         "runtime": "starting_rtmp",
         "message": "RTMP consumer starting. Poll runtime-status for updates."
     }
+
+@router.get("/sessions/mock/{mock_id}")
+def get_mock_session(
+    mock_id: str,
+    db: DBSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    if settings.ENV != "development":
+        raise HTTPException(status_code=404, detail="Not Found")
+        
+    session = db.query(InterviewSession).filter(
+        InterviewSession.zoom_meeting_id == mock_id,
+        InterviewSession.recruiter_id == current_user.id
+    ).first()
+    
+    if not session:
+        raise HTTPException(status_code=404, detail="Mock session not found")
+        
+    return {
+        "session_id": str(session.id),
+        "status": session.status,
+        "stream_key": mock_id,
+        "meeting_id": mock_id,
+        "rtmp_server": f"{settings.RTMP_SERVER_URL}/stream"
+    }
