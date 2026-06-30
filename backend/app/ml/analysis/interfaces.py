@@ -22,6 +22,14 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
+from app.ml.analysis.evidence_types import (
+    BehaviourEvidence,
+    CommunicationEvidence,
+    EvidenceCollection,
+    STARExtraction,
+    TechnicalEvidence,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -210,8 +218,24 @@ class SessionContext:
     # These are populated by preprocessing.py BEFORE plugins execute.
     # Plugins consume these — they never call the LLM independently.
 
-    evidence: Any = None          # EvidenceCollection from evidence_types.py
+    evidence: EvidenceCollection | None = None
     company_id: str | None = None # Active tenant ID for config resolution
+
+    @property
+    def behaviour_evidence(self) -> list[BehaviourEvidence]:
+        return self.evidence.behaviours if self.evidence else []
+
+    @property
+    def communication_evidence(self) -> list[CommunicationEvidence]:
+        return self.evidence.communication if self.evidence else []
+
+    @property
+    def technical_evidence(self) -> list[TechnicalEvidence]:
+        return self.evidence.technical if self.evidence else []
+
+    @property
+    def star_extractions(self) -> list[STARExtraction]:
+        return self.evidence.star_extractions if self.evidence else []
 
     # ── Competency configuration (loaded from YAML) ──────────────────────
     competency_config: dict[str, Any] = field(default_factory=dict)
