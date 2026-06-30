@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.1:8b"
 
+    # ── Candidate Face Tracking ──────────────────────────────────────────
+    TRACKING_ACQUIRE_THRESHOLD: float = 0.75
+    TRACKING_RELEASE_THRESHOLD: float = 0.60
+    ENROLLMENT_TIMEOUT_SECONDS: int = 15
+
     class Config:
         env_file = ".env"
 
