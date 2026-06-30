@@ -20,6 +20,7 @@ import UsersPage from './pages/admin/UsersPage'
 import AuditLogsPage from './pages/admin/AuditLogsPage'
 import AdminSettingsPage from './pages/admin/SettingsPage'
 import SettingsPage from './pages/SettingsPage'
+import MockMeetingPage from './pages/MockMeetingPage'
 
 // Inside <Routes> after /login:
 
@@ -77,6 +78,18 @@ export default function App() {
             <Route path="/admin/settings" element={
               <ProtectedRoute allowedRoles={['ADMIN']}><AdminSettingsPage /></ProtectedRoute>
             } />
+
+            {/* Development Only */}
+            {import.meta.env.DEV && (
+              <>
+                <Route path="/mock-start/:mockId" element={
+                  <ProtectedRoute><MockMeetingPage /></ProtectedRoute>
+                } />
+                <Route path="/mock-join/:mockId" element={
+                  <ProtectedRoute><MockMeetingPage /></ProtectedRoute>
+                } />
+              </>
+            )}
 
             {/* Default redirect */}
             <Route path="*" element={<Navigate to="/sessions" replace />} />
