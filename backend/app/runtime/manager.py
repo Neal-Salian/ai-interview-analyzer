@@ -2,6 +2,8 @@ import time
 import logging
 from typing import Dict, Any, Optional
 
+from app.ml.tracking.candidate_tracker import create_tracking_metadata, TrackingStatus
+
 logger = logging.getLogger(__name__)
 
 class RuntimeManager:
@@ -47,7 +49,8 @@ class RuntimeManager:
                 "websocket": False
             },
             "duration_ms": 0,
-            "start_time": time.time()
+            "start_time": time.time(),
+            "tracking_metadata": create_tracking_metadata(),
         }
         from app.core.logging_config import log_event
         log_event(logger, "runtime_state_transition", session_id=session_id, previous_state="created", new_state="initializing")
@@ -186,12 +189,52 @@ class RuntimeManager:
 
     @classmethod
     def clear(cls, session_id: str):
-        """Clear state for a session."""
+        """Clear state for a session, including all tracking metadata and embeddings."""
         if session_id in cls._state:
             prev_status = cls._state[session_id].get("status", "unknown")
+            # Explicitly destroy tracking metadata (embedding, bbox, stats)
+            tracking = cls._state[session_id].get("tracking_metadata")
+            if tracking:
+                tracking["candidate_embedding"] = None
+                tracking["tracking_status"] = TrackingStatus.SESSION_ENDED
             from app.core.logging_config import log_event
             log_event(logger, "runtime_state_transition", session_id=session_id, previous_state=prev_status, new_state="terminated")
             del cls._state[session_id]
+
+    # ── Candidate Face Tracking ──────────────────────────────────────────
+
+    @classmethod
+    def get_tracking_metadata(cls, session_id: str) -> Optional[dict]:
+        """Get the tracking metadata for a session, or None if not initialized."""
+        state = cls._state.get(session_id)
+        if state:
+            return state.get("tracking_metadata")
+        return None
+
+    @classmethod
+    def update_tracking_metadata(cls, session_id: str, **updates):
+        """
+        Atomically update specific fields in the tracking metadata.
+
+        Usage:
+            RuntimeManager.update_tracking_metadata(
+                session_id,
+                tracking_status=TrackingStatus.TRACKING,
+                confidence=0.85,
+            )
+        """
+        state = cls._state.get(session_id)
+        if state and "tracking_metadata" in state:
+            state["tracking_metadata"].update(updates)
+
+    @classmethod
+    def get_tracking_status(cls, session_id: str) -> TrackingStatus:
+        """Get the current tracking status for a session."""
+        meta = cls.get_tracking_metadata(session_id)
+        if meta:
+            return meta.get("tracking_status", TrackingStatus.NOT_ENROLLED)
+        return TrackingStatus.NOT_ENROLLED
+
 
     @classmethod
     async def initialize_session(cls, session_id: str):
