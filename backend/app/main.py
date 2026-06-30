@@ -273,6 +273,7 @@ async def _handle_enroll_candidate(session_id: str, websocket: WebSocket):
         session_id,
         tracking_status=TrackingStatus.ENROLLING,
         enrollment_start_time=time.time(),
+        enrollment_error=None,
     )
 
     log_event(logger, "enrollment_started", session_id=session_id)
@@ -305,12 +306,22 @@ async def _handle_enroll_candidate(session_id: str, websocket: WebSocket):
             return
 
         if status != TrackingStatus.ENROLLING:
-            # Something else transitioned the state (e.g. session ended)
-            await websocket.send_json({
-                "type": "enrollment_status",
-                "status": "failed",
-                "reason": f"Enrollment interrupted — state became: {status}",
-            })
+            meta = RuntimeManager.get_tracking_metadata(session_id)
+            error_reason = meta.get("enrollment_error") if meta else None
+            
+            if status == TrackingStatus.NOT_ENROLLED and error_reason:
+                await websocket.send_json({
+                    "type": "enrollment_status",
+                    "status": "failed",
+                    "reason": error_reason,
+                })
+            else:
+                # Something else transitioned the state (e.g. session ended)
+                await websocket.send_json({
+                    "type": "enrollment_status",
+                    "status": "failed",
+                    "reason": f"Enrollment interrupted — state became: {status}",
+                })
             return
 
     # Timeout — revert to NOT_ENROLLED
