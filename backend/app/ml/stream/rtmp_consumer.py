@@ -94,21 +94,22 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                                 )
                                 enrollment_buffer = []
 
-                                if result:
+                                if result.success:
                                     from app.core.config import settings
                                     RuntimeManager.update_tracking_metadata(
                                         session_id,
                                         tracking_status=TrackingStatus.TRACKING,
-                                        candidate_embedding=result["embedding"],
-                                        last_known_bbox=result["bbox"],
+                                        candidate_embedding=result.embedding,
+                                        last_known_bbox=result.bbox,
                                         confidence=1.0,
                                         last_verified_timestamp=now,
                                         stabilisation_frames_remaining=STABILISATION_FRAMES,
                                         tracking_acquired_at=now,
+                                        enrollment_error=None,
                                     )
                                     # Initialize OpenCV tracker
                                     cv_tracker = create_tracker()
-                                    init_tracker(cv_tracker, frame, result["bbox"])
+                                    init_tracker(cv_tracker, frame, result.bbox)
                                     log_event(logger, "tracking_acquired",
                                               session_id=session_id)
                                 else:
@@ -116,9 +117,10 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                                         session_id,
                                         tracking_status=TrackingStatus.NOT_ENROLLED,
                                         enrollment_start_time=None,
+                                        enrollment_error=result.reason,
                                     )
                                     log_event(logger, "enrollment_failed",
-                                              session_id=session_id)
+                                              session_id=session_id, reason=result.reason)
 
                             last_analyzed = now
                             continue  # Skip analysis during enrollment
