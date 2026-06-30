@@ -218,7 +218,20 @@ async def websocket_endpoint(
 
         while True:
             try:
-                await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+                raw = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+
+                # ── Parse incoming WebSocket commands ─────────────────
+                try:
+                    import json
+                    msg = json.loads(raw)
+                    msg_type = msg.get("type", "")
+
+                    if msg_type == "enroll_candidate":
+                        await _handle_enroll_candidate(session_id, websocket)
+
+                except (json.JSONDecodeError, TypeError):
+                    pass  # Plain text keepalive — ignore
+
             except asyncio.TimeoutError:
                 await websocket.send_json({"type": "ping"})
 
@@ -228,6 +241,92 @@ async def websocket_endpoint(
         logger.exception(f"[WS] Unexpected error for {session_id}: {e}")
         disconnect_recruiter(session_id, websocket)
 
+
+
+# ── Candidate Enrollment Handler ─────────────────────────────────────────
+
+async def _handle_enroll_candidate(session_id: str, websocket: WebSocket):
+    """
+    Handle the 'enroll_candidate' WebSocket command.
+
+    Transitions tracking state to ENROLLING. The RTMP consumer detects
+    this state change and begins capturing enrollment frames. This handler
+    polls for completion or timeout.
+    """
+    from app.runtime.manager import RuntimeManager
+    from app.ml.tracking.candidate_tracker import TrackingStatus
+    from app.core.config import settings
+    from app.core.logging_config import log_event
+
+    current_status = RuntimeManager.get_tracking_status(session_id)
+
+    if current_status not in (TrackingStatus.NOT_ENROLLED, TrackingStatus.LOST):
+        await websocket.send_json({
+            "type": "enrollment_status",
+            "status": "rejected",
+            "reason": f"Cannot enroll from state: {current_status}",
+        })
+        return
+
+    # Signal the RTMP consumer to start capturing enrollment frames
+    RuntimeManager.update_tracking_metadata(
+        session_id,
+        tracking_status=TrackingStatus.ENROLLING,
+        enrollment_start_time=time.time(),
+    )
+
+    log_event(logger, "enrollment_started", session_id=session_id)
+
+    await websocket.send_json({
+        "type": "enrollment_status",
+        "status": "enrolling",
+        "message": "Candidate enrollment started. Ask candidate to look at camera.",
+    })
+
+    # Poll for completion or timeout — the RTMP consumer performs the actual enrollment
+    timeout = settings.ENROLLMENT_TIMEOUT_SECONDS
+    poll_interval = 0.5
+    elapsed = 0.0
+
+    while elapsed < timeout:
+        await asyncio.sleep(poll_interval)
+        elapsed += poll_interval
+
+        status = RuntimeManager.get_tracking_status(session_id)
+
+        if status == TrackingStatus.TRACKING:
+            meta = RuntimeManager.get_tracking_metadata(session_id)
+            log_event(logger, "enrollment_completed", session_id=session_id)
+            await websocket.send_json({
+                "type": "enrollment_status",
+                "status": "enrolled",
+                "confidence": meta.get("confidence", 0.0) if meta else 0.0,
+            })
+            return
+
+        if status != TrackingStatus.ENROLLING:
+            # Something else transitioned the state (e.g. session ended)
+            await websocket.send_json({
+                "type": "enrollment_status",
+                "status": "failed",
+                "reason": f"Enrollment interrupted — state became: {status}",
+            })
+            return
+
+    # Timeout — revert to NOT_ENROLLED
+    RuntimeManager.update_tracking_metadata(
+        session_id,
+        tracking_status=TrackingStatus.NOT_ENROLLED,
+        enrollment_start_time=None,
+    )
+    log_event(logger, "enrollment_timeout", session_id=session_id,
+              timeout_seconds=timeout)
+
+    await websocket.send_json({
+        "type": "enrollment_status",
+        "status": "timeout",
+        "reason": f"Enrollment timed out after {timeout}s. Please retry.",
+    })
 
 
 # Internal test endpoint — broadcasts a fake emotion to a session
