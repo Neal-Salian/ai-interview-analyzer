@@ -47,6 +47,22 @@ export default function LiveDashboard() {
     const [connected, setConnected] = useState(false)
     const [sessionInfo, setSessionInfo] = useState<{ candidate: string, job: string, status?: string, zoom_join_url?: string, meeting_provider?: string, zoom_meeting_id?: string } | null>(null)
     
+    // Enrollment / Tracking
+    const [enrollmentStatus, setEnrollmentStatus] = useState<'idle' | 'enrolling' | 'failed' | 'success' | 'timeout'>('idle')
+    const [trackingStatus, setTrackingStatus] = useState<'not_enrolled' | 'tracking' | 'lost' | 'reverifying' | 'session_ended'>('not_enrolled')
+    const [enrollmentReason, setEnrollmentReason] = useState<string>('')
+    const [toasts, setToasts] = useState<{id: string, message: string, type: 'info'|'success'|'warning'|'error'}[]>([])
+    const lastToastRef = useRef<Record<string, number>>({})
+
+    const showToast = (message: string, type: 'info'|'success'|'warning'|'error' = 'info') => {
+        const now = Date.now()
+        if (lastToastRef.current[message] && now - lastToastRef.current[message] < 5000) return
+        lastToastRef.current[message] = now
+        const id = Math.random().toString(36).substring(7)
+        setToasts(prev => [...prev, { id, message, type }])
+        setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 5000)
+    }
+
     const { aiRuntime, aiRuntimeDetails, retryInitialization } = useRuntimeStatus(sessionId, sessionInfo?.status === 'active')
     const transcriptRef = useRef<HTMLDivElement>(null)
     const wsRef = useRef<WebSocket | null>(null)
@@ -176,6 +192,33 @@ export default function LiveDashboard() {
                     details: msg.details || '',
                     timestamp: new Date().toISOString()
                 }].slice(-5)) // Keep last 5
+            }
+
+            if (msg.type === 'enrollment_status' && msg.status) {
+                setEnrollmentStatus(msg.status as any)
+                if (msg.reason) setEnrollmentReason(msg.reason)
+                
+                if (msg.status === 'success' || msg.status === 'enrolled') {
+                    showToast('Candidate enrolled successfully.', 'success')
+                    setEnrollmentStatus('idle') // temporary workflow ends
+                } else if (msg.status === 'failed') {
+                    const reasonStr = msg.reason === 'multiple_faces_detected' ? 'Multiple faces detected' : msg.reason
+                    showToast(`Enrollment failed: ${reasonStr}`, 'error')
+                } else if (msg.status === 'timeout') {
+                    showToast('Enrollment timed out.', 'warning')
+                } else if (msg.status === 'enrolling') {
+                    showToast('Enrollment started...', 'info')
+                }
+            }
+
+            if (msg.type === 'tracking_status' && msg.status) {
+                setTrackingStatus(msg.status as any)
+                
+                if (msg.status === 'lost') {
+                    showToast('Candidate tracking lost.', 'warning')
+                } else if (msg.status === 'tracking') {
+                    showToast('Candidate tracking active.', 'success')
+                }
             }
         }
 
@@ -482,6 +525,67 @@ export default function LiveDashboard() {
 
                 {/* Right column — transcript */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {/* Candidate Tracking Card */}
+                    <div style={cardStyle}>
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', fontFamily: 'var(--font-heading)' }}>
+                            Candidate Tracking
+                        </div>
+                        {aiRuntime !== 'running' ? (
+                            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px', background: 'var(--bg)', borderRadius: 'var(--radius)' }}>
+                                Tracking will be available after AI Analysis starts.
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                {/* Status Indicator */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'var(--bg)', borderRadius: 'var(--radius)' }}>
+                                    {trackingStatus === 'tracking' && <><span style={{ fontSize: '18px' }}>🟢</span><div style={{ fontWeight: 600 }}>Tracking Candidate</div></>}
+                                    {enrollmentStatus === 'enrolling' && <><span style={{ fontSize: '18px' }}>🟡</span><div style={{ fontWeight: 600 }}>Enrolling...</div></>}
+                                    {trackingStatus === 'reverifying' && <><span style={{ fontSize: '18px' }}>🟠</span><div style={{ fontWeight: 600 }}>Re-verifying...</div></>}
+                                    {trackingStatus === 'lost' && <><span style={{ fontSize: '18px' }}>🔴</span><div style={{ fontWeight: 600, color: 'var(--danger)' }}>Candidate Lost</div></>}
+                                    {trackingStatus === 'not_enrolled' && enrollmentStatus !== 'enrolling' && <><span style={{ fontSize: '18px' }}>⚪</span><div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Not Enrolled</div></>}
+                                    
+                                    {/* Sub-status text */}
+                                    <div style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                        {trackingStatus === 'lost' && 'Visual analysis paused.'}
+                                        {trackingStatus === 'tracking' && 'Visual analysis active.'}
+                                    </div>
+                                </div>
+                                
+                                {/* Instructions & Button */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                    {trackingStatus === 'not_enrolled' && enrollmentStatus !== 'enrolling' && (
+                                        <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                                            {enrollmentStatus === 'failed' && enrollmentReason === 'multiple_faces_detected' ? (
+                                                <span style={{ color: '#f59e0b' }}>⚠️ More than one face detected. Please ask interviewers or panel members to temporarily disable their cameras. Then retry enrollment.</span>
+                                            ) : (
+                                                "Ask only the candidate to keep their camera on for a few seconds. When ready, press Enroll Candidate."
+                                            )}
+                                        </div>
+                                    )}
+                                    
+                                    {(trackingStatus === 'not_enrolled' || trackingStatus === 'lost' || enrollmentStatus === 'failed' || enrollmentStatus === 'timeout') && (
+                                        <button 
+                                            onClick={() => {
+                                                if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                                                    wsRef.current.send(JSON.stringify({ type: 'enroll_candidate' }))
+                                                    setEnrollmentStatus('enrolling')
+                                                }
+                                            }}
+                                            disabled={enrollmentStatus === 'enrolling' || aiRuntime !== 'running'}
+                                            style={{
+                                                padding: '10px 16px', background: enrollmentStatus === 'enrolling' ? 'var(--bg)' : 'var(--accent)', 
+                                                color: enrollmentStatus === 'enrolling' ? 'var(--text-secondary)' : '#fff', 
+                                                border: '1px solid var(--border)', borderRadius: '6px', cursor: enrollmentStatus === 'enrolling' ? 'not-allowed' : 'pointer', fontWeight: 500, alignSelf: 'flex-start'
+                                            }}
+                                        >
+                                            {enrollmentStatus === 'failed' || enrollmentStatus === 'timeout' || trackingStatus === 'lost' ? 'Retry Enrollment' : 'Enroll Candidate'}
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
                     {integrityAlerts.length > 0 && (
                         <div style={{ ...cardStyle, borderColor: 'var(--danger)', borderLeftWidth: '4px' }}>
                             <div style={{ fontSize: '12px', color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px', fontFamily: 'var(--font-heading)', fontWeight: 700 }}>
@@ -541,6 +645,22 @@ export default function LiveDashboard() {
                 )}
 
             </div>
+
+            {/* Toasts */}
+            <div style={{ position: 'fixed', bottom: '24px', right: '24px', display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 9999 }}>
+                {toasts.map(toast => (
+                    <div key={toast.id} style={{
+                        background: 'var(--bg-surface)', border: `1px solid var(--border)`, 
+                        borderLeft: `4px solid ${toast.type === 'success' ? 'var(--success)' : toast.type === 'error' ? 'var(--danger)' : toast.type === 'warning' ? '#f59e0b' : 'var(--accent)'}`,
+                        padding: '12px 16px', borderRadius: '4px', boxShadow: 'var(--shadow-lg)',
+                        fontSize: '13px', fontWeight: 500, minWidth: '250px',
+                        animation: 'slideIn 0.3s ease-out'
+                    }}>
+                        {toast.message}
+                    </div>
+                ))}
+            </div>
+            
             </PageTransition>
         </div>
     )
