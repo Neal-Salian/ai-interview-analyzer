@@ -13,6 +13,13 @@ from app.db.crud import (
 )
 from app.api.websocket import broadcast
 from app.core.logging_config import log_event
+from app.runtime.manager import RuntimeManager
+from app.ml.tracking.candidate_tracker import (
+    TrackingStatus, enroll_from_frames, verify_candidate,
+    crop_candidate, create_tracker, init_tracker, update_tracker,
+    ENROLLMENT_FRAMES_TARGET, STABILISATION_FRAMES, VERIFY_COOLDOWN_FRAMES,
+    _ensure_deepface_model,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +44,23 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                   error_message=str(e))
         return
 
+    # Pre-load DeepFace model once for the session
+    try:
+        await asyncio.to_thread(_ensure_deepface_model)
+    except Exception as e:
+        logger.warning(f"[CONSUMER] DeepFace pre-load failed (non-fatal): {e}")
+
     try:
 
         last_analyzed = 0
         audio_buffer = []
         transcript_chunk_count = 0
         integrity_state = {}  # Phase 3: persistent state for liveness tracking
+
+        # ── Candidate tracking state (local to consumer) ─────────────
+        enrollment_buffer = []       # Captured frames during enrollment
+        cv_tracker = None            # OpenCV tracker instance (owned here)
+        last_tracking_status = None  # For state-change WebSocket emits
 
         logger.info("[CONSUMER] Stream opened. Starting packet loop...")
         log_event(logger, "consumer_started",
@@ -62,11 +80,187 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                             continue
 
                         frame = frames[0].to_ndarray(format="bgr24")
+                        tracking_meta = RuntimeManager.get_tracking_metadata(session_id)
+                        tracking_status = tracking_meta.get("tracking_status", TrackingStatus.NOT_ENROLLED) if tracking_meta else TrackingStatus.NOT_ENROLLED
 
-                        # Run emotion and attention in parallel on the same frame
+                        # ── Enrollment capture ────────────────────────────
+                        if tracking_status == TrackingStatus.ENROLLING:
+                            enrollment_buffer.append(frame.copy())
+
+                            if len(enrollment_buffer) >= ENROLLMENT_FRAMES_TARGET:
+                                # Perform atomic enrollment
+                                result = await asyncio.to_thread(
+                                    enroll_from_frames, enrollment_buffer
+                                )
+                                enrollment_buffer = []
+
+                                if result:
+                                    from app.core.config import settings
+                                    RuntimeManager.update_tracking_metadata(
+                                        session_id,
+                                        tracking_status=TrackingStatus.TRACKING,
+                                        candidate_embedding=result["embedding"],
+                                        last_known_bbox=result["bbox"],
+                                        confidence=1.0,
+                                        last_verified_timestamp=now,
+                                        stabilisation_frames_remaining=STABILISATION_FRAMES,
+                                        tracking_acquired_at=now,
+                                    )
+                                    # Initialize OpenCV tracker
+                                    cv_tracker = create_tracker()
+                                    init_tracker(cv_tracker, frame, result["bbox"])
+                                    log_event(logger, "tracking_acquired",
+                                              session_id=session_id)
+                                else:
+                                    RuntimeManager.update_tracking_metadata(
+                                        session_id,
+                                        tracking_status=TrackingStatus.NOT_ENROLLED,
+                                        enrollment_start_time=None,
+                                    )
+                                    log_event(logger, "enrollment_failed",
+                                              session_id=session_id)
+
+                            last_analyzed = now
+                            continue  # Skip analysis during enrollment
+
+                        # ── Determine analysis frame ──────────────────────
+                        # Default: full frame (V1 backwards-compatible behavior)
+                        analysis_frame = frame
+                        candidate_identified = False
+
+                        if tracking_status == TrackingStatus.TRACKING:
+                            # Stabilisation delay: skip analysis for first N frames
+                            stab = tracking_meta.get("stabilisation_frames_remaining", 0)
+                            if stab > 0:
+                                RuntimeManager.update_tracking_metadata(
+                                    session_id,
+                                    stabilisation_frames_remaining=stab - 1,
+                                )
+                                last_analyzed = now
+                                continue
+
+                            # Try OpenCV tracker first (lightweight)
+                            bbox = None
+                            if cv_tracker is not None:
+                                bbox = await asyncio.to_thread(update_tracker, cv_tracker, frame)
+
+                            if bbox:
+                                analysis_frame = crop_candidate(frame, bbox)
+                                candidate_identified = True
+                                RuntimeManager.update_tracking_metadata(
+                                    session_id,
+                                    last_known_bbox=bbox,
+                                    frames_since_last_verify=tracking_meta.get("frames_since_last_verify", 0) + 1,
+                                )
+                            else:
+                                # Tracker lost — transition to LOST
+                                RuntimeManager.update_tracking_metadata(
+                                    session_id,
+                                    tracking_status=TrackingStatus.LOST,
+                                    last_known_bbox=None,
+                                    tracking_failure_count=tracking_meta.get("tracking_failure_count", 0) + 1,
+                                )
+                                cv_tracker = None
+                                log_event(logger, "tracking_lost", session_id=session_id)
+
+                        elif tracking_status in (TrackingStatus.LOST, TrackingStatus.REVERIFYING):
+                            candidate_embedding = tracking_meta.get("candidate_embedding")
+                            cooldown = tracking_meta.get("frames_since_last_verify", 0)
+                            consecutive_failures = tracking_meta.get("consecutive_verify_failures", 0)
+
+                            # Cooldown: wait N frames between verification attempts
+                            cooldown_required = VERIFY_COOLDOWN_FRAMES * (1 + consecutive_failures)
+                            if candidate_embedding and cooldown >= cooldown_required:
+                                from app.core.config import settings
+                                RuntimeManager.update_tracking_metadata(
+                                    session_id,
+                                    tracking_status=TrackingStatus.REVERIFYING,
+                                    frames_since_last_verify=0,
+                                )
+
+                                match = await asyncio.to_thread(
+                                    verify_candidate,
+                                    frame,
+                                    candidate_embedding,
+                                    settings.TRACKING_ACQUIRE_THRESHOLD,
+                                    settings.TRACKING_RELEASE_THRESHOLD,
+                                    currently_tracking=False,
+                                )
+
+                                if match:
+                                    analysis_frame = crop_candidate(frame, match["bbox"])
+                                    candidate_identified = True
+                                    cv_tracker = create_tracker()
+                                    init_tracker(cv_tracker, frame, match["bbox"])
+                                    RuntimeManager.update_tracking_metadata(
+                                        session_id,
+                                        tracking_status=TrackingStatus.TRACKING,
+                                        last_known_bbox=match["bbox"],
+                                        confidence=match["confidence"],
+                                        last_verified_timestamp=now,
+                                        consecutive_verify_failures=0,
+                                        reidentification_count=tracking_meta.get("reidentification_count", 0) + 1,
+                                        stabilisation_frames_remaining=0,
+                                    )
+                                    log_event(logger, "tracking_reacquired",
+                                              session_id=session_id,
+                                              confidence=match["confidence"])
+                                else:
+                                    RuntimeManager.update_tracking_metadata(
+                                        session_id,
+                                        tracking_status=TrackingStatus.LOST,
+                                        consecutive_verify_failures=consecutive_failures + 1,
+                                    )
+                            else:
+                                # Still in cooldown — increment counter
+                                RuntimeManager.update_tracking_metadata(
+                                    session_id,
+                                    frames_since_last_verify=cooldown + 1,
+                                )
+
+                        # ── Emit tracking status changes (state-change only) ──
+                        current_ts = RuntimeManager.get_tracking_status(session_id)
+                        if current_ts != last_tracking_status:
+                            if last_tracking_status is not None:
+                                await broadcast(session_id, {
+                                    "type": "tracking_status",
+                                    "status": current_ts.value if hasattr(current_ts, 'value') else str(current_ts),
+                                })
+                            last_tracking_status = current_ts
+
+                        # ── Skip candidate-level analysis if enrolled but not identified ─
+                        enrolled = tracking_meta and tracking_meta.get("candidate_embedding") is not None
+                        if enrolled and not candidate_identified:
+                            # Frame-level integrity still runs on full frame
+                            try:
+                                from app.ml.integrity.integrity_checker import check_integrity
+                                integrity = await asyncio.to_thread(
+                                    check_integrity, frame, {"face_detected": False, "direction": "missing", "confidence": 0.0},
+                                    prev_state=integrity_state,
+                                )
+                                integrity_state = integrity.get("updated_state", {})
+                                for event in integrity.get("events", []):
+                                    await asyncio.to_thread(
+                                        save_integrity_event, session_id, event
+                                    )
+                                    await broadcast(session_id, {
+                                        "type": "integrity_alert",
+                                        "event_type": event["event_type"],
+                                        "severity": event["severity"],
+                                        "details": str(event.get("details", "")),
+                                    })
+                            except ImportError:
+                                pass
+                            except Exception as e:
+                                logger.warning(f"[INTEGRITY ERROR] {e}")
+
+                            last_analyzed = now
+                            continue  # Skip emotion/attention — candidate not visible
+
+                        # ── Run emotion and attention on the analysis frame ───
                         emotion, attention = await asyncio.gather(
-                            asyncio.to_thread(analyze_frame, frame),
-                            asyncio.to_thread(analyze_attention, frame),
+                            asyncio.to_thread(analyze_frame, analysis_frame),
+                            asyncio.to_thread(analyze_attention, analysis_frame),
                         )
 
                         # Save & broadcast emotion (existing)
@@ -85,7 +279,9 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                             "confidence": attention["confidence"],
                         })
 
-                        # Phase 3: Integrity checks (reuses frame + attention result)
+                        # Phase 3: Integrity checks
+                        # Frame-level (multi-face) uses full frame
+                        # Candidate-level (liveness) uses attention from the analysis_frame
                         try:
                             from app.ml.integrity.integrity_checker import check_integrity
                             integrity = await asyncio.to_thread(
