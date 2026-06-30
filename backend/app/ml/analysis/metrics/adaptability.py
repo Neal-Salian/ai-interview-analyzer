@@ -1,24 +1,28 @@
 """
-Adaptability metric plugin.
+Adaptability metric plugin — Enterprise Competency Framework.
 
 Detects adaptability and flexibility indicators from transcript content.
 
-Signals:
-  - Adaptability keyword frequency
-  - Problem-solving language patterns
-  - Growth mindset indicators
-  - Emotional resilience under challenging questions
+V3.0: Evidence-first evaluation. When structured evidence is available
+(from the preprocessing pipeline), the plugin scores pre-extracted
+adaptability behaviours (e.g., adaptability, problem_solving, learning).
+Falls back to keyword-based analysis when evidence is unavailable.
 
 v2.0: Confidence-weighted scoring with keyword-density confidence,
       raised sample-size thresholds, and per-signal confidence breakdown.
 """
 
-from app.ml.analysis.interfaces import MetricResult, SessionContext
+from app.ml.analysis.interfaces import (
+    MetricResult,
+    EnhancedMetricResult,
+    SessionContext,
+)
 from app.ml.analysis.scoring_utils import (
     confidence_weighted_average,
     sample_size_confidence,
     keyword_density_confidence,
     score_to_level,
+    evidence_based_confidence,
     SignalComponent,
 )
 from app.ml.analysis.registry import register_metric
@@ -30,7 +34,11 @@ class AdaptabilityMetric:
         "Detects adaptability and flexibility indicators from the candidate's "
         "language, including problem-solving ability and growth mindset."
     )
-    version = "2.0"
+    version = "3.0"
+    author = "Platform Team"
+    supported_engine = 2
+    requires = {"behaviour_evidence": 1}
+    plugin_metadata = {"category": "competency", "tier": "core"}
 
     ADAPTABILITY_KEYWORDS = [
         "adapted", "adjusted", "pivoted", "flexible", "changed",
@@ -59,10 +67,96 @@ class AdaptabilityMetric:
     IDEAL_EMOTION_FRAMES = 50
 
     def compute(self, ctx: SessionContext) -> MetricResult:
+        # ── Try evidence-based evaluation first ───────────────────────────
+        evidence = getattr(ctx, "evidence", None)
+        if evidence and not evidence.is_empty():
+            rel_types = ["adaptability", "problem_solving", "learning_agility"]
+            behaviours = []
+            for t in rel_types:
+                behaviours.extend(evidence.get_behaviours_by_type(t))
+            
+            if behaviours:
+                return self._evidence_based_compute(ctx, evidence, behaviours)
+
+        # ── Fallback: keyword-based evaluation (V2 logic) ────────────────
+        return self._keyword_based_compute(ctx)
+
+    def _evidence_based_compute(
+        self, ctx: SessionContext, evidence, behaviours
+    ) -> EnhancedMetricResult:
+        """Score adaptability using pre-extracted behaviour evidence."""
+        components: list[SignalComponent] = []
+        sub_dimensions: list[dict] = []
+        evidence_ids: list[str] = []
+        transcript_refs: list[str] = []
+
+        avg_confidence = sum(b.confidence for b in behaviours) / len(behaviours)
+        base_score = min(int(len(behaviours) * 20 + avg_confidence * 20), 100)
+
+        components.append(SignalComponent(
+            score=max(0, min(100, base_score)),
+            confidence=avg_confidence,
+            signal_name="adaptability_behaviours",
+        ))
+
+        # Track evidence
+        for b in behaviours:
+            evidence_ids.append(b.id)
+            if b.transcript_reference:
+                transcript_refs.append(b.transcript_reference)
+
+        # ── Aggregate ─────────────────────────────────────────────────────
+        result = confidence_weighted_average(components)
+        signals = [c["signal_name"] for c in components]
+
+        types_found = set(b.behaviour_type for b in behaviours)
+        reasoning_parts = [
+            f"Observed adaptability behaviours: {', '.join(types_found)}."
+        ]
+        
+        recommendations = []
+        if result["final_score"] >= 70:
+            recommendations.append(
+                "Strong adaptability and problem-solving indicators. Well-suited for ambiguous environments."
+            )
+        else:
+            recommendations.append(
+                "Limited evidence of adaptability. Ask how they handle sudden priority shifts."
+            )
+
+        return EnhancedMetricResult(
+            name=self.name,
+            score=result["final_score"],
+            raw_score=result["raw_score"],
+            level=score_to_level(result["final_score"]),
+            confidence=result["overall_confidence"],
+            confidence_details=result["confidence_details"],
+            evidence=[{"source": "evidence_pipeline", "count": len(behaviours)}],
+            explanation=(
+                f"Adaptability assessed using {len(components)} signal(s): "
+                f"{', '.join(signals)}."
+            ),
+            signals_used=signals,
+            summary=(
+                f"Interview evidence suggests "
+                f"{'strong' if result['final_score'] >= 70 else 'moderate'} "
+                f"adaptability and growth mindset."
+            ),
+            reasoning=" ".join(reasoning_parts),
+            recommendations=recommendations,
+            transcript_references=transcript_refs[:5],
+            evidence_ids=evidence_ids,
+            sub_dimensions=sub_dimensions,
+            metadata=self.plugin_metadata,
+        )
+
+    def _keyword_based_compute(self, ctx: SessionContext) -> MetricResult:
+        """V2 keyword-based fallback logic."""
         components: list[SignalComponent] = []
         evidence: list[dict] = []
 
-        if not ctx.candidate_transcript or not ctx.candidate_transcript.strip():
+        transcript = getattr(ctx, "candidate_transcript", "") or ctx.full_transcript
+        if not transcript or not transcript.strip():
             return MetricResult(
                 name=self.name,
                 score=0,
@@ -75,13 +169,11 @@ class AdaptabilityMetric:
                 signals_used=[],
             )
 
-        text_lower = ctx.candidate_transcript.lower()
+        text_lower = transcript.lower()
         word_count = max(len(text_lower.split()), 1)
 
         # ── Signal 1: Adaptability keywords ──────────────────────────────
-        adapt_hits = sum(
-            text_lower.count(kw) for kw in self.ADAPTABILITY_KEYWORDS
-        )
+        adapt_hits = sum(text_lower.count(kw) for kw in self.ADAPTABILITY_KEYWORDS)
         sig_confidence = keyword_density_confidence(
             hits=adapt_hits,
             word_count=word_count,
@@ -106,9 +198,7 @@ class AdaptabilityMetric:
                 })
 
         # ── Signal 2: Problem-solving language ───────────────────────────
-        problem_hits = sum(
-            text_lower.count(kw) for kw in self.PROBLEM_SOLVING_KEYWORDS
-        )
+        problem_hits = sum(text_lower.count(kw) for kw in self.PROBLEM_SOLVING_KEYWORDS)
         sig_confidence = keyword_density_confidence(
             hits=problem_hits,
             word_count=word_count,
@@ -133,9 +223,7 @@ class AdaptabilityMetric:
                 })
 
         # ── Signal 3: Growth mindset indicators ──────────────────────────
-        growth_hits = sum(
-            text_lower.count(kw) for kw in self.GROWTH_MINDSET_KEYWORDS
-        )
+        growth_hits = sum(text_lower.count(kw) for kw in self.GROWTH_MINDSET_KEYWORDS)
         sig_confidence = keyword_density_confidence(
             hits=growth_hits,
             word_count=word_count,
@@ -167,7 +255,6 @@ class AdaptabilityMetric:
             )
             if sig_confidence > 0:
                 negative_emotions = {"angry", "fear", "sad", "disgust"}
-                # Check the second half of the interview
                 mid = n // 2
                 second_half = ctx.emotions[mid:]
                 neg_in_second = sum(
