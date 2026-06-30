@@ -29,6 +29,15 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.1:8b"
 
+    # ── Candidate Attribution ────────────────────────────────────────────
+    ATTRIBUTION_WINDOW_SIZE: int = 15
+    ATTRIBUTION_PREVIOUS_CONTEXT: int = 5
+    ATTRIBUTION_NEXT_CONTEXT: int = 5
+    ATTRIBUTION_MIN_CONFIDENCE: float = 0.4
+    MAX_CONCURRENT_ATTRIBUTION: int = 2
+    ATTRIBUTION_RETRY_TIMEOUT: float = 60.0
+    ATTRIBUTION_RETRY_BACKOFF: float = 0.5
+
     # ── Candidate Face Tracking ──────────────────────────────────────────
     TRACKING_ACQUIRE_THRESHOLD: float = 0.75
     TRACKING_RELEASE_THRESHOLD: float = 0.60
