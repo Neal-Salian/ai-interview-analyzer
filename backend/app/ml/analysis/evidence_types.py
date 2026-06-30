@@ -48,6 +48,9 @@ class EvidenceItem:
     evidence_type: str = ""
     evidence_text: str = ""
     transcript_reference: str = ""
+    transcript_id: str | None = None
+    transcript_index: int | None = None
+    timestamp: str | None = None
     reasoning: str = ""
     confidence: float = 0.0
     source: str = "evidence_service"
@@ -58,6 +61,9 @@ class EvidenceItem:
             "evidence_type": self.evidence_type,
             "evidence_text": self.evidence_text,
             "transcript_reference": self.transcript_reference,
+            "transcript_id": self.transcript_id,
+            "transcript_index": self.transcript_index,
+            "timestamp": self.timestamp,
             "reasoning": self.reasoning,
             "confidence": round(self.confidence, 3),
             "source": self.source,
@@ -113,6 +119,9 @@ class STARExtraction:
     completeness: float = 0.0
     missing_sections: list[str] = field(default_factory=list)
     transcript_reference: str = ""
+    transcript_id: str | None = None
+    transcript_index: int | None = None
+    timestamp: str | None = None
     confidence: float = 0.0
     source: str = "evidence_service"
 
@@ -127,6 +136,9 @@ class STARExtraction:
             "completeness": round(self.completeness, 3),
             "missing_sections": list(self.missing_sections),
             "transcript_reference": self.transcript_reference,
+            "transcript_id": self.transcript_id,
+            "transcript_index": self.transcript_index,
+            "timestamp": self.timestamp,
             "confidence": round(self.confidence, 3),
             "source": self.source,
         }
@@ -193,6 +205,7 @@ class EvidenceCollection:
     star_extractions: list[STARExtraction] = field(default_factory=list)
     communication: list[CommunicationEvidence] = field(default_factory=list)
     technical: list[TechnicalEvidence] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     # ── Index for O(1) lookup by evidence ID ──────────────────────────────
     _index: dict[str, EvidenceItem | STARExtraction] = field(
@@ -258,5 +271,6 @@ class EvidenceCollection:
             "star_extractions": [s.to_dict() for s in self.star_extractions],
             "communication": [c.to_dict() for c in self.communication],
             "technical": [t.to_dict() for t in self.technical],
+            "metadata": self.metadata,
             "total_evidence_items": len(self._index),
         }
