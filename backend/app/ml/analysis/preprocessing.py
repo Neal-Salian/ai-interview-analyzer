@@ -251,72 +251,10 @@ async def build_enriched_session_context(db: DBSession, session_id: str) -> Sess
     )
 
     # ── Step 3: Evidence Extraction (single LLM call) ─────────────────────
-    # Uses the candidate transcript if available, otherwise full transcript.
-    await asyncio.to_thread(_run_evidence_extraction, ctx)
+    # Executes the async single-pass evidence extraction and attaches the
+    # generated EvidenceCollection to the SessionContext.
+    from app.ml.analysis.evidence_service import build_evidence
+    
+    ctx.evidence = await build_evidence(ctx)
     
     return ctx
-
-
-def _run_evidence_extraction(ctx: SessionContext) -> None:
-    """
-    Run the evidence extraction pipeline (synchronous — called via to_thread).
-
-    This calls evidence_service.extract_evidence() ONCE and attaches the
-    result to ctx.evidence.  If extraction fails, ctx.evidence is set to
-    an empty EvidenceCollection so plugins fall back gracefully.
-    """
-    from app.ml.analysis.evidence_service import extract_evidence
-    from app.ml.analysis.evidence_types import EvidenceCollection
-
-    # Prefer candidate-only transcript (most relevant for competency analysis)
-    analysis_transcript = ctx.candidate_transcript or ctx.full_transcript
-    if not analysis_transcript or not analysis_transcript.strip():
-        logger.info(
-            "[preprocessing] No transcript for evidence extraction — "
-            "plugins will use fallback scoring"
-        )
-        ctx.evidence = EvidenceCollection()
-        return
-
-    # Clean the transcript
-    cleaned = _clean_transcript(analysis_transcript)
-
-    try:
-        evidence = extract_evidence(
-            transcript=cleaned,
-            job_title=ctx.job_title,
-            job_skills=ctx.job_skills,
-            candidate_name=ctx.candidate_name,
-        )
-        ctx.evidence = evidence
-        logger.info(
-            f"[preprocessing] Evidence extraction complete: "
-            f"{len(evidence.behaviours)} behaviours, "
-            f"{len(evidence.star_extractions)} STAR examples, "
-            f"{len(evidence.communication)} communication, "
-            f"{len(evidence.technical)} technical"
-        )
-    except Exception as e:
-        logger.warning(
-            f"[preprocessing] Evidence extraction failed: {e} — "
-            f"plugins will use fallback scoring"
-        )
-        ctx.evidence = EvidenceCollection()
-
-
-def _clean_transcript(text: str) -> str:
-    """
-    Clean and normalize transcript text for LLM analysis.
-
-    Operations:
-      - Strip leading/trailing whitespace
-      - Collapse multiple spaces/newlines
-      - Remove control characters
-    """
-    if not text:
-        return ""
-    # Remove control characters (except newlines and tabs)
-    cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
-    # Collapse multiple whitespace into single spaces
-    cleaned = re.sub(r"\s+", " ", cleaned)
-    return cleaned.strip()
