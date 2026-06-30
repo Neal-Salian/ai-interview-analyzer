@@ -162,19 +162,48 @@ async def build_enriched_session_context(db: DBSession, session_id: str) -> Sess
     Builds the base context from DB, then performs Candidate Attribution
     to populate the candidate and recruiter separated transcripts.
     """
+    from app.db.models import Session as InterviewSession
+    
     logger.info(f"[preprocessing] Building context for session {session_id}")
     
     # 1. Fetch raw data from DB (in a thread to avoid blocking event loop)
     ctx = await asyncio.to_thread(_fetch_raw_context, db, session_id)
     
-    # 2. Perform Phase 0 - Candidate Attribution
-    logger.info(f"[preprocessing] Running candidate attribution for session {session_id}")
-    attribution_result = await perform_attribution(
-        full_transcript=ctx.full_transcript,
-        candidate_name=ctx.candidate_name,
-        job_title=ctx.job_title,
-        recent_questions=ctx.questions
+    # Check for persisted attribution to avoid rerunning
+    session = await asyncio.to_thread(
+        lambda: db.query(InterviewSession).filter(InterviewSession.id == session_id).first()
     )
+    
+    attribution_result = None
+    if session and session.session_summary and "attribution_result" in session.session_summary:
+        logger.info(f"[preprocessing] Using persisted attribution for session {session_id}")
+        attribution_result = session.session_summary["attribution_result"]
+    else:
+        # 2. Perform Phase 0 - Candidate Attribution
+        logger.info(f"[preprocessing] Running candidate attribution for session {session_id}")
+        attribution_result = await perform_attribution(
+            transcripts=ctx.transcripts,
+            candidate_name=ctx.candidate_name,
+            job_title=ctx.job_title,
+            recent_questions=ctx.questions
+        )
+        
+        # Persist attribution results
+        if session:
+            def _update_session():
+                try:
+                    # SQLAlchemy JSONB requires replacing the whole dict or using flag_modified
+                    from sqlalchemy.orm.attributes import flag_modified
+                    summary = session.session_summary or {}
+                    summary["attribution_result"] = attribution_result
+                    session.session_summary = summary
+                    flag_modified(session, "session_summary")
+                    db.commit()
+                    logger.info(f"[preprocessing] Persisted attribution result for session {session_id}")
+                except Exception as e:
+                    db.rollback()
+                    logger.error(f"[preprocessing] Failed to persist attribution: {e}")
+            await asyncio.to_thread(_update_session)
     
     # 3. Enrich the context
     ctx.conversation_timeline = attribution_result.get("segments", [])
