@@ -19,13 +19,19 @@ logger = logging.getLogger(__name__)
 # This happens when the FastAPI server starts, not on each request.
 
 logger.info("[NLP] Loading sentiment model...")
-_sentiment_pipe = pipeline(
-    "sentiment-analysis",
-    model="distilbert-base-uncased-finetuned-sst-2-english",
-    truncation=True,
-    max_length=512,
-)
-logger.info("[NLP] Sentiment model ready.")
+_sentiment_pipe = None
+
+def _get_pipe():
+    global _sentiment_pipe
+    if _sentiment_pipe is None:
+        _sentiment_pipe = pipeline(
+            "sentiment-analysis",
+            model="distilbert-base-uncased-finetuned-sst-2-english",
+            truncation=True,
+            max_length=512,
+        )
+        logger.info("[NLP] Sentiment model ready.")
+    return _sentiment_pipe
 
 # ── Big Five keyword lexicon ──────────────────────────────────────────────────
 # Each list contains words strongly associated with the trait.
@@ -88,7 +94,8 @@ def score_sentiment(text: str) -> dict:
         sample_confidence = round((word_count - 20) / 80, 3)
 
     try:
-        result = _sentiment_pipe(text[:1024])[0]
+        pipe = _get_pipe()
+        result = pipe(text[:1024])[0]
         return {
             "label": result["label"],
             "score": round(float(result["score"]), 3),

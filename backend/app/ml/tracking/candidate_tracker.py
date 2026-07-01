@@ -50,6 +50,11 @@ def _ensure_deepface_model():
     if _deepface_model_loaded:
         return
     try:
+        import os
+        weights_path = os.path.expanduser("~/.deepface/weights/vgg_face_weights.h5")
+        if not os.path.exists(weights_path):
+            raise FileNotFoundError(f"DeepFace weights not found at {weights_path}. Automatic download disabled.")
+            
         from deepface import DeepFace
         # Build the model once — subsequent calls reuse the cached instance
         DeepFace.build_model(_deepface_model_name)
