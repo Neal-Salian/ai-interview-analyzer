@@ -245,19 +245,26 @@ class RuntimeManager:
         from app.services.ai import rtmp_service, ollama_service, whisper_service, deepface_service
         import asyncio
 
-        db = SessionLocal()
-        session = db.query(InterviewSession).filter(InterviewSession.id == session_id).first()
-        
-        meeting_id = getattr(session, "zoom_meeting_id", None) if session else None
-        recruiter_id = str(session.recruiter_id) if session and session.recruiter_id else None
-
+        db = None
+        session = None
         log_kwargs = {
             "session_id": session_id,
-            "meeting_id": meeting_id,
-            "recruiter_id": recruiter_id,
+            "meeting_id": None,
+            "recruiter_id": None,
         }
         
         try:
+            db = SessionLocal()
+            session = db.query(InterviewSession).filter(InterviewSession.id == session_id).first()
+            
+            meeting_id = getattr(session, "zoom_meeting_id", None) if session else None
+            recruiter_id = str(session.recruiter_id) if session and session.recruiter_id else None
+
+            log_kwargs.update({
+                "meeting_id": meeting_id,
+                "recruiter_id": recruiter_id,
+            })
+            
             log_event(logger, "runtime_check_started", **log_kwargs)
             
             # 1. RTMP Server Reachable
@@ -332,10 +339,15 @@ class RuntimeManager:
             
         except Exception as e:
             logger.error(f"Initialization task error: {e}")
-            cls.set_failed(session_id, "internal", "Internal server error during initialization.")
-            if session:
-                session.ai_runtime_status = "failed"
-                db.commit()
-            log_event(logger, "runtime_failed", failed_component="internal", error=str(e), **log_kwargs)
+            failed_component = "database" if any(x in str(e).lower() for x in ["db", "postgre", "psycopg"]) else "internal"
+            cls.set_failed(session_id, failed_component, f"Initialization error: {e}")
+            if session and db:
+                try:
+                    session.ai_runtime_status = "failed"
+                    db.commit()
+                except Exception as db_err:
+                    logger.error(f"Failed to update session status in DB: {db_err}")
+            log_event(logger, "runtime_failed", failed_component=failed_component, error=str(e), **log_kwargs)
         finally:
-            db.close()
+            if db:
+                db.close()
