@@ -35,7 +35,7 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
     container = None
     try:
         container = await asyncio.to_thread(
-            av.open, rtmp_url, timeout=5.0
+            av.open, rtmp_url, timeout=5.0, options={'rw_timeout': '5000000'}
         )
     except Exception as e:
         logger.exception(f"[CONSUMER] Failed to open stream: {e}")
@@ -85,7 +85,7 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                 now = time.time()
                 if now - last_analyzed >= 1.0:
                     try:
-                        frames = packet.decode()
+                        frames = await asyncio.to_thread(packet.decode)
                         if not frames:
                             continue
 
@@ -471,7 +471,7 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
     finally:
         if container:
             try:
-                container.close()
+                await asyncio.to_thread(container.close)
                 logger.info(f"[CONSUMER] Cleaned up PyAV container for session {session_id}")
             except Exception as e:
                 logger.error(f"[CONSUMER] Failed to close PyAV container: {e}")

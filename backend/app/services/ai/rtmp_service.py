@@ -92,7 +92,7 @@ async def start(
             # Import av here so we can attempt to open and signal quickly
             import av
             container = await asyncio.to_thread(
-                av.open, rtmp_url, timeout=5.0
+                av.open, rtmp_url, timeout=5.0, options={'rw_timeout': '5000000'}
             )
             # If we reach here, the stream opened successfully
             startup_event.set()
@@ -103,7 +103,7 @@ async def start(
             # opens its own container, so instead we close this probe
             # container and let consume_stream re-open.  This is the safest
             # approach to avoid changing the consumer internals.
-            container.close()
+            await asyncio.to_thread(container.close)
 
             # Run the real consumer with retry
             max_retries = 3
