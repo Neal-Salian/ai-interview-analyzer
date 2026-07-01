@@ -24,3 +24,4 @@ test_api.py
 test_candidate_creation.py
 backend/test_runtime_manager.py
 backend/test_pyav.py
+test_e2e.py
