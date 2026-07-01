@@ -24,6 +24,7 @@ export default function MockMeetingPage() {
     
     const [copiedServer, setCopiedServer] = useState(false);
     const [copiedKey, setCopiedKey] = useState(false);
+    const [startingMock, setStartingMock] = useState(false);
 
     useEffect(() => {
         const fetchDetails = async () => {
@@ -45,7 +46,7 @@ export default function MockMeetingPage() {
     // Use existing runtime status hook for polling AI/RTMP engine status
     const { aiRuntime, aiRuntimeDetails } = useRuntimeStatus(
         sessionDetails?.session_id,
-        !!sessionDetails && ['scheduled', 'active'].includes(sessionDetails.status)
+        (!!sessionDetails && ['scheduled', 'active'].includes(sessionDetails.status)) || startingMock
     );
 
     const handleCopy = useCallback(async (text: string, type: 'server' | 'key') => {
@@ -81,6 +82,25 @@ export default function MockMeetingPage() {
             navigate(`/sessions/${sessionDetails.session_id}/live`);
         }
     };
+
+    const handleStartMockSession = async () => {
+        if (!sessionDetails?.session_id) return;
+        setStartingMock(true);
+        try {
+            await client.post(`/sessions/mock/${sessionDetails.session_id}/start`);
+            // We wait for aiRuntime === 'ready' to navigate.
+        } catch (err: any) {
+            console.error(err);
+            setError(err.response?.data?.detail || "Failed to start mock session");
+            setStartingMock(false);
+        }
+    };
+
+    useEffect(() => {
+        if (startingMock && aiRuntime === 'ready' && sessionDetails) {
+            navigate(`/sessions/${sessionDetails.session_id}/live`);
+        }
+    }, [startingMock, aiRuntime, navigate, sessionDetails]);
 
     if (loading) {
         return (
@@ -215,10 +235,24 @@ export default function MockMeetingPage() {
                             </div>
 
                             <div className="actions-container">
-                                <button className="session-card__action session-card__action--primary dashboard-btn" onClick={handleOpenDashboard}>
-                                    <span className="material-symbols-outlined">dashboard</span>
-                                    Open Live Dashboard
-                                </button>
+                                {sessionDetails.status === 'scheduled' ? (
+                                    <button 
+                                        className="session-card__action session-card__action--primary dashboard-btn" 
+                                        onClick={handleStartMockSession}
+                                        disabled={startingMock}
+                                        style={startingMock ? { opacity: 0.7, cursor: 'not-allowed' } : {}}
+                                    >
+                                        <span className="material-symbols-outlined" style={startingMock ? { animation: 'spin 2s linear infinite' } : {}}>
+                                            {startingMock ? 'sync' : 'play_circle'}
+                                        </span>
+                                        {startingMock ? 'Starting & Initializing AI...' : 'Start Mock Session'}
+                                    </button>
+                                ) : (
+                                    <button className="session-card__action session-card__action--primary dashboard-btn" onClick={handleOpenDashboard}>
+                                        <span className="material-symbols-outlined">dashboard</span>
+                                        Open Live Dashboard
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>
