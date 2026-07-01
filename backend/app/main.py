@@ -56,17 +56,71 @@ async def lifespan(app: FastAPI):
         logger.critical(f"[STARTUP] Metric discovery failed — aborting: {e}")
         raise
 
+    # ── Non-critical: Preload ML models in background ─────────────────────
+    async def preload_models():
+        from app.core.logging_config import log_event
+        logger.info("[STARTUP] Starting background model preload...")
+        
+        try:
+            from app.ml.speech.transcriber import _get_model as preload_whisper
+            await asyncio.to_thread(preload_whisper)
+            logger.info("[STARTUP] Whisper model preloaded successfully.")
+        except Exception as e:
+            logger.warning(f"[STARTUP] Whisper preload failed (will retry on demand): {e}")
+
+        try:
+            from app.ml.tracking.candidate_tracker import _ensure_deepface_model
+            await asyncio.to_thread(_ensure_deepface_model)
+            logger.info("[STARTUP] DeepFace model preloaded successfully.")
+        except Exception as e:
+            logger.warning(f"[STARTUP] DeepFace preload failed: {e}")
+            
+    asyncio.create_task(preload_models())
+
     # ── Non-critical: Recover active streaming sessions ───────────────────
     try:
         active = get_active_sessions()
-        for session in active:
-            if session.zoom_meeting_id:
-                rtmp_url = f"{settings.RTMP_SERVER_URL}/stream/{session.zoom_meeting_id}"
-                logger.info(f"[STARTUP] Recovering consumer for session {session.id}")
-                asyncio.create_task(consume_stream(str(session.id), rtmp_url))
-        logger.info(f"[STARTUP] Recovery check done — {len(active)} active session(s) found")
+        
+        async def recovery_task(sessions):
+            from app.core.config import settings
+            from app.services.ai.rtmp_service import start as start_rtmp
+            from app.core.logging_config import log_event
+            
+            logger.info(f"[RECOVERY] Started background recovery for {len(sessions)} session(s).")
+            log_event(logger, "recovery_started", session_count=len(sessions))
+            
+            # Limit concurrent recoveries to avoid executor starvation
+            semaphore = asyncio.Semaphore(2)
+            
+            async def recover_single(session):
+                async with semaphore:
+                    if session.zoom_meeting_id:
+                        rtmp_url = f"{settings.RTMP_SERVER_URL}/stream/{session.zoom_meeting_id}"
+                        logger.info(f"[RECOVERY] Attempting recovery for session {session.id}")
+                        try:
+                            result = await start_rtmp(str(session.id), rtmp_url)
+                            if not result.get("success"):
+                                logger.warning(f"[RECOVERY] Orphan or failed session {session.id}: {result.get('error')}")
+                                log_event(logger, "recovery_failed", session_id=str(session.id), error=result.get("error"))
+                            else:
+                                logger.info(f"[RECOVERY] Successfully recovered session {session.id}")
+                        except Exception as e:
+                            logger.error(f"[RECOVERY] Unexpected error for session {session.id}: {e}")
+            
+            await asyncio.gather(*(recover_single(s) for s in sessions))
+            
+            logger.info("[RECOVERY] Finished all background recovery tasks.")
+            log_event(logger, "recovery_finished")
+
+        if active:
+            asyncio.create_task(recovery_task(active))
+        else:
+            logger.info("[STARTUP] No active sessions found. Skipping recovery.")
+            from app.core.logging_config import log_event
+            log_event(logger, "recovery_skipped")
+            
     except Exception as e:
-        logger.warning(f"[STARTUP] Could not recover active sessions: {e}")
+        logger.warning(f"[STARTUP] Could not initiate active session recovery: {e}")
 
     yield
 
