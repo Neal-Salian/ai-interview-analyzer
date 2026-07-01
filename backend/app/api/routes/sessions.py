@@ -606,3 +606,32 @@ def get_mock_session(
         "meeting_id": mock_id,
         "rtmp_server": f"{settings.RTMP_SERVER_URL}/stream"
     }
+
+
+@router.post("/sessions/mock/{session_id}/start")
+async def start_mock_session(
+    session_id: str,
+    background_tasks: BackgroundTasks,
+    db: DBSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    if settings.ENV != "development":
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    session = db.query(InterviewSession).filter(
+        InterviewSession.id == session_id,
+        InterviewSession.recruiter_id == current_user.id
+    ).first()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    from app.services.lifecycle import activate_session_and_initialize_ai
+    activate_session_and_initialize_ai(
+        session, db, background_tasks, trigger="mock_meeting.started"
+    )
+
+    return {
+        "message": "Mock session started",
+        "session_id": str(session.id),
+    }
