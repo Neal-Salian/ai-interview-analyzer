@@ -35,7 +35,7 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
     container = None
     try:
         container = await asyncio.to_thread(
-            av.open, rtmp_url, options={"rtmp_live": "live"}
+            av.open, rtmp_url, options={"rtmp_live": "live", "timeout": "5000000"}
         )
     except Exception as e:
         logger.exception(f"[CONSUMER] Failed to open stream: {e}")
@@ -66,7 +66,17 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
         log_event(logger, "consumer_started",
                   session_id=session_id, rtmp_url=rtmp_url)
 
-        for packet in container.demux():
+        demuxer = container.demux()
+        while True:
+            try:
+                # Wrap the synchronous blocking read in a thread
+                packet = await asyncio.to_thread(next, demuxer)
+            except StopIteration:
+                break
+            except Exception as e:
+                logger.warning(f"[CONSUMER] stream read error or timeout for {session_id}: {e}")
+                break
+
             if packet.dts is None:
                 continue
 
