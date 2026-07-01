@@ -209,9 +209,8 @@ async def zoom_webhook(
 
         if existing:
             # Pre-existing session found — activate it and launch the consumer.
-            existing.status = "active"
-            existing.started_at = datetime.datetime.utcnow()
-            db.commit()
+            from app.services.lifecycle import activate_session_and_initialize_ai
+            activate_session_and_initialize_ai(existing, db, background_tasks, trigger="webhook_meeting.started")
             session = existing
             logger.info(
                 f"[webhook] meeting.started — matched pre-existing session "
@@ -275,40 +274,11 @@ async def zoom_webhook(
                 f"one through the UI or API."
             )
 
+            from app.services.lifecycle import activate_session_and_initialize_ai
+            activate_session_and_initialize_ai(session, db, background_tasks, trigger="webhook_meeting.started")
+
         session_id = str(session.id)
-        recruiter_id_str = str(session.recruiter_id) if session.recruiter_id else None
 
-        # ── Trigger Automatic AI Initialization ───────────────────────────
-        runtime_status = RuntimeManager.get_status(session_id).get("status")
-        
-        # Initialization Guard
-        if runtime_status not in ["initializing", "ready", "starting_rtmp", "running"]:
-            RuntimeManager.set_initializing(session_id)
-            session.ai_runtime_status = "initializing"
-            db.commit()
-
-            log_event(
-                logger, 
-                "runtime_auto_initialize_requested",
-                session_id=session_id, 
-                meeting_id=meeting_id, 
-                recruiter_id=recruiter_id_str,
-                trigger="meeting.started"
-            )
-
-            log_event(
-                logger, 
-                "runtime_initializing",
-                session_id=session_id, 
-                meeting_id=meeting_id, 
-                recruiter_id=recruiter_id_str,
-                trigger="meeting.started"
-            )
-
-            background_tasks.add_task(RuntimeManager.initialize_session, session_id)
-            logger.info(f"[webhook] meeting.started — AI initialization triggered for session {session_id}")
-        else:
-            logger.info(f"[webhook] meeting.started — skipping AI initialization, runtime already {runtime_status}")
         log_event(logger, "meeting_started",
                   session_id=session_id, meeting_id=meeting_id,
                   is_orphan=(existing is None))
