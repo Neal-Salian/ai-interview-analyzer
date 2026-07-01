@@ -35,7 +35,7 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
     container = None
     try:
         container = await asyncio.to_thread(
-            av.open, rtmp_url, options={"rtmp_live": "live", "timeout": "5000000"}
+            av.open, rtmp_url, timeout=5.0
         )
     except Exception as e:
         logger.exception(f"[CONSUMER] Failed to open stream: {e}")
