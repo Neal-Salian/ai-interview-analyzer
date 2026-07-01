@@ -92,7 +92,7 @@ async def start(
             # Import av here so we can attempt to open and signal quickly
             import av
             container = await asyncio.to_thread(
-                av.open, rtmp_url, options={"rtmp_live": "live"}
+                av.open, rtmp_url, timeout=5.0
             )
             # If we reach here, the stream opened successfully
             startup_event.set()
