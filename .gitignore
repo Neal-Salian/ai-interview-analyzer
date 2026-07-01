@@ -22,3 +22,5 @@ backend/uploads/
 backend/test.py
 test_api.py
 test_candidate_creation.py
+backend/test_runtime_manager.py
+
