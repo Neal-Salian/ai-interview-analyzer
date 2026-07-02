@@ -108,7 +108,7 @@ def create_tracking_metadata() -> dict:
 # Quality gate constants
 MIN_FACE_AREA_RATIO = 0.02       # Face must occupy ≥2% of frame area
 MIN_SHARPNESS = 50.0             # Laplacian variance threshold
-ENROLLMENT_FRAMES_TARGET = 10    # Capture up to 10 good frames
+ENROLLMENT_FRAMES_TARGET = 3     # Capture up to 3 good frames
 STABILISATION_FRAMES = 2         # Wait 2 frames after enrollment
 
 
