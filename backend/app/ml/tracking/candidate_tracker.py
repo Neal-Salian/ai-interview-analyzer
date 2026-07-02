@@ -24,6 +24,12 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
+try:
+    from deepface import DeepFace
+    from deepface.commons import distance as dst
+except ImportError:
+    DeepFace = None
+    dst = None
 
 # ── Tracking State Machine ───────────────────────────────────────────────────
 
@@ -49,7 +55,7 @@ _deepface_lock = threading.Lock()
 def _ensure_deepface_model():
     """Pre-load the DeepFace recognition model into memory (idempotent)."""
     global _deepface_model_loaded
-    if _deepface_model_loaded:
+    if _deepface_model_loaded or DeepFace is None:
         return
     with _deepface_lock:
         if _deepface_model_loaded:
@@ -60,7 +66,6 @@ def _ensure_deepface_model():
             if not os.path.exists(weights_path):
                 raise FileNotFoundError(f"DeepFace weights not found at {weights_path}. Automatic download disabled.")
                 
-            from deepface import DeepFace
             # Build the model once — subsequent calls reuse the cached instance
             DeepFace.build_model(_deepface_model_name)
             _deepface_model_loaded = True
@@ -155,7 +160,8 @@ def generate_embedding(frame: np.ndarray) -> Optional[list]:
     """
     _ensure_deepface_model()
     try:
-        from deepface import DeepFace
+        if DeepFace is None:
+            return None
 
         results = DeepFace.represent(
             img_path=frame,
@@ -193,7 +199,8 @@ def enroll_from_frames(frames: list[np.ndarray]) -> EnrollmentResult:
         EnrollmentResult object containing success status, reason, and optionally embedding/bbox.
     """
     _ensure_deepface_model()
-    from deepface import DeepFace
+    if DeepFace is None:
+        return EnrollmentResult(success=False, reason="deepface_not_available")
 
     embeddings = []
     best_bbox = None
@@ -285,8 +292,8 @@ def verify_candidate(
     """
     _ensure_deepface_model()
     try:
-        from deepface import DeepFace
-        from deepface.commons import distance as dst
+        if DeepFace is None:
+            return None
 
         results = DeepFace.represent(
             img_path=frame,
