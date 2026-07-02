@@ -51,6 +51,8 @@ def disconnect_recruiter(session_id: str, websocket: WebSocket):
 
 
 async def broadcast(session_id: str, data: dict):
+    if data.get("type") == "transcript":
+        logger.info(f"transcript broadcast: payload={data}, number of connected clients={len(active_connections.get(session_id, []))}")
     if session_id in active_connections:
         # Iterate over a copy of the list to allow safe removal during iteration
         for ws in list(active_connections[session_id]):
