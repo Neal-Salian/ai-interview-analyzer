@@ -62,7 +62,8 @@ def activate_session_and_initialize_ai(
             trigger=trigger
         )
 
-        background_tasks.add_task(RuntimeManager.initialize_session, session_id)
+        from app.runtime.manager import run_initialize_session
+        background_tasks.add_task(run_initialize_session, session_id)
         logger.info(f"[{trigger}] AI initialization triggered for session {session_id}")
     else:
         logger.info(f"[{trigger}] skipping AI initialization, runtime already {runtime_status}")
