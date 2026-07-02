@@ -15,9 +15,11 @@ def _get_model():
             if model is None:
                 import os
                 weights_path = "/app/models/small.pt"
+                logger.info(f"Whisper model path: {weights_path}")
                 if not os.path.exists(weights_path):
                     raise FileNotFoundError(f"Whisper weights not found at {weights_path}. Automatic download disabled.")
                 model = whisper.load_model("small", download_root="/app/models")  # Phase 4: upgraded from "base" for ~4x accuracy
+                logger.info("model loaded successfully")
     return model
 
 import av

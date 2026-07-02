@@ -347,6 +347,8 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                     packets_to_process = audio_buffer[:]
                     audio_buffer = []
 
+                    logger.info(f"audio chunks received")
+
                     # ── Retry loop for transcription ──────────────────────────
                     # Whisper can transiently fail (OOM, corrupted frame, CUDA
                     # hiccup).  We retry up to MAX_TRANSCRIBE_RETRIES times with
@@ -363,6 +365,7 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                             transcript = await asyncio.to_thread(
                                 transcribe_chunk, packets_to_process
                             )
+                            logger.info("transcription produced")
                             break  # success
                         except asyncio.CancelledError:
                             raise
@@ -403,8 +406,12 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                         except Exception as e:
                             logger.warning(f"[VOCAB CORRECTION] {e}")
 
+                    if not transcript or not transcript.strip():
+                        continue
+
                     # Save transcript to DB
                     await asyncio.to_thread(save_transcript, session_id, transcript)
+                    logger.info("transcript stored")
 
                     # Score sentiment on this chunk and broadcast
                     try:
@@ -428,6 +435,7 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                         "type": "transcript",
                         "text": transcript,
                     })
+                    logger.info("websocket broadcast")
 
                     logger.info(f"[TRANSCRIPT] {transcript[:80]}")
 

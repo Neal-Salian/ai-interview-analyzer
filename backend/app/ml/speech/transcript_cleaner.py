@@ -81,4 +81,5 @@ def clean_transcript(text: str) -> str:
     if text and text[0].islower():
         text = text[0].upper() + text[1:]
 
+    logger.info("transcript cleaner output")
     return text
