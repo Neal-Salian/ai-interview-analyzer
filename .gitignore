@@ -46,3 +46,5 @@ backend/test_deepface_import.py
 backend/test_deepface_import2.py
 fix_enroll.py
 trigger_enroll.py
+
+backend/models/
