@@ -5,15 +5,19 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 model = None
+import threading
+_whisper_lock = threading.Lock()
 
 def _get_model():
     global model
     if model is None:
-        import os
-        weights_path = os.path.expanduser("~/.cache/whisper/small.pt")
-        if not os.path.exists(weights_path):
-            raise FileNotFoundError(f"Whisper weights not found at {weights_path}. Automatic download disabled.")
-        model = whisper.load_model("small")  # Phase 4: upgraded from "base" for ~4x accuracy
+        with _whisper_lock:
+            if model is None:
+                import os
+                weights_path = os.path.expanduser("~/.cache/whisper/small.pt")
+                if not os.path.exists(weights_path):
+                    raise FileNotFoundError(f"Whisper weights not found at {weights_path}. Automatic download disabled.")
+                model = whisper.load_model("small")  # Phase 4: upgraded from "base" for ~4x accuracy
     return model
 
 import av

@@ -42,6 +42,8 @@ class TrackingStatus(str, Enum):
 _deepface_model_name = "VGG-Face"
 _deepface_detector = "opencv"
 _deepface_model_loaded = False
+import threading
+_deepface_lock = threading.Lock()
 
 
 def _ensure_deepface_model():
@@ -49,19 +51,22 @@ def _ensure_deepface_model():
     global _deepface_model_loaded
     if _deepface_model_loaded:
         return
-    try:
-        import os
-        weights_path = os.path.expanduser("~/.deepface/weights/vgg_face_weights.h5")
-        if not os.path.exists(weights_path):
-            raise FileNotFoundError(f"DeepFace weights not found at {weights_path}. Automatic download disabled.")
-            
-        from deepface import DeepFace
-        # Build the model once — subsequent calls reuse the cached instance
-        DeepFace.build_model(_deepface_model_name)
-        _deepface_model_loaded = True
-        logger.info("[TRACKER] DeepFace recognition model pre-loaded")
-    except Exception as e:
-        logger.warning(f"[TRACKER] Failed to pre-load DeepFace model: {e}")
+    with _deepface_lock:
+        if _deepface_model_loaded:
+            return
+        try:
+            import os
+            weights_path = os.path.expanduser("~/.deepface/weights/vgg_face_weights.h5")
+            if not os.path.exists(weights_path):
+                raise FileNotFoundError(f"DeepFace weights not found at {weights_path}. Automatic download disabled.")
+                
+            from deepface import DeepFace
+            # Build the model once — subsequent calls reuse the cached instance
+            DeepFace.build_model(_deepface_model_name)
+            _deepface_model_loaded = True
+            logger.info("[TRACKER] DeepFace recognition model pre-loaded")
+        except Exception as e:
+            logger.warning(f"[TRACKER] Failed to pre-load DeepFace model: {e}")
 
 
 # ── Tracking Metadata Factory ───────────────────────────────────────────────
