@@ -254,8 +254,9 @@ class RuntimeManager:
         }
         
         try:
+            import uuid
             db = SessionLocal()
-            session = db.query(InterviewSession).filter(InterviewSession.id == session_id).first()
+            session = db.query(InterviewSession).filter(InterviewSession.id == uuid.UUID(session_id)).first()
             
             meeting_id = getattr(session, "zoom_meeting_id", None) if session else None
             recruiter_id = str(session.recruiter_id) if session and session.recruiter_id else None
@@ -348,6 +349,8 @@ class RuntimeManager:
                 except Exception as db_err:
                     logger.error(f"Failed to update session status in DB: {db_err}")
             log_event(logger, "runtime_failed", failed_component=failed_component, error=str(e), **log_kwargs)
-        finally:
             if db:
                 db.close()
+
+async def run_initialize_session(session_id: str):
+    await RuntimeManager.initialize_session(session_id)
