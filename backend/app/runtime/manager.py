@@ -15,8 +15,35 @@ class RuntimeManager:
     _state: Dict[str, Dict[str, Any]] = {}
 
     @classmethod
+    def _ensure_state(cls, session_id: str):
+        """Auto-reconstruct state if it was lost (e.g. Uvicorn reload) but the consumer is still running."""
+        if session_id not in cls._state:
+            try:
+                from app.core.registry import is_active
+                if is_active(session_id):
+                    cls._state[session_id] = {
+                        "status": "running",
+                        "progress": 100,
+                        "current_step": "AI analysis running.",
+                        "failed_component": None,
+                        "checks": {
+                            "rtmp": True,
+                            "ollama": True,
+                            "whisper": True,
+                            "deepface": True,
+                            "websocket": True
+                        },
+                        "duration_ms": 0,
+                        "start_time": time.time(),
+                        "tracking_metadata": create_tracking_metadata(),
+                    }
+            except ImportError:
+                pass
+
+    @classmethod
     def get_status(cls, session_id: str) -> Dict[str, Any]:
         """Get the current runtime status details for a session."""
+        cls._ensure_state(session_id)
         return cls._state.get(session_id, {
             "status": "not_initialized",
             "progress": 0,
@@ -206,6 +233,7 @@ class RuntimeManager:
     @classmethod
     def get_tracking_metadata(cls, session_id: str) -> Optional[dict]:
         """Get the tracking metadata for a session, or None if not initialized."""
+        cls._ensure_state(session_id)
         state = cls._state.get(session_id)
         if state:
             return state.get("tracking_metadata")
@@ -223,6 +251,7 @@ class RuntimeManager:
                 confidence=0.85,
             )
         """
+        cls._ensure_state(session_id)
         state = cls._state.get(session_id)
         if state and "tracking_metadata" in state:
             state["tracking_metadata"].update(updates)
@@ -230,6 +259,7 @@ class RuntimeManager:
     @classmethod
     def get_tracking_status(cls, session_id: str) -> TrackingStatus:
         """Get the current tracking status for a session."""
+        cls._ensure_state(session_id)
         meta = cls.get_tracking_metadata(session_id)
         if meta:
             return meta.get("tracking_status", TrackingStatus.NOT_ENROLLED)
