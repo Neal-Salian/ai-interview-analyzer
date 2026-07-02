@@ -8,8 +8,8 @@ from app.core.config import settings
 clean_url = settings.DATABASE_URL.replace('"', '').replace("'", "").strip()
 
 # 2. Add a quick safety check
-if not clean_url.startswith("postgresql://"):
-    raise ValueError(f"CRITICAL: Invalid URL format detected! URL looks like: {clean_url}")
+# if not clean_url.startswith("postgresql://"):
+#     raise ValueError(f"CRITICAL: Invalid URL format detected! URL looks like: {clean_url}")
 
 # 3. Build the engine with the cleaned URL
 engine = create_engine(clean_url)
