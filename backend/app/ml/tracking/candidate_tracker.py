@@ -457,9 +457,15 @@ def crop_candidate(frame: np.ndarray, bbox: tuple, padding: float = 0.2) -> np.n
 # ── OpenCV Tracker Helpers ──────────────────────────────────────────────────
 
 def create_tracker():
-    """Create a new OpenCV CSRT tracker instance."""
+    """Create a new OpenCV CSRT tracker instance with fallbacks."""
     import cv2
-    return cv2.TrackerCSRT_create()
+    try:
+        return cv2.TrackerCSRT_create()
+    except AttributeError:
+        try:
+            return cv2.TrackerKCF_create()
+        except AttributeError:
+            return cv2.TrackerMIL_create()
 
 
 def init_tracker(tracker, frame: np.ndarray, bbox: tuple):
