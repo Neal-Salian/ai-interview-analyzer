@@ -109,8 +109,8 @@ def create_tracking_metadata() -> dict:
 # ── Enrollment ──────────────────────────────────────────────────────────────
 
 # Quality gate constants
-MIN_FACE_AREA_RATIO = 0.02       # Face must occupy ≥2% of frame area
-MIN_SHARPNESS = 50.0             # Laplacian variance threshold
+MIN_FACE_AREA_RATIO = 0.005      # Lowered to 0.5% for OBS Zoom-style PIP streams
+MIN_SHARPNESS = 10.0             # Lowered to 10.0 for compressed RTMP webcam feeds
 ENROLLMENT_FRAMES_TARGET = 3     # Capture up to 3 good frames
 STABILISATION_FRAMES = 2         # Wait 2 frames after enrollment
 
@@ -132,27 +132,39 @@ def assess_frame_quality(frame: np.ndarray, face_region: dict) -> bool:
     fw, fh = face_region.get("w", 0), face_region.get("h", 0)
     face_area = fw * fh
 
-    # Area ratio check
-    if face_area / max(frame_area, 1) < MIN_FACE_AREA_RATIO:
-        return False
+    face_area_ratio = face_area / max(frame_area, 1)
 
-    # Sharpness check (Laplacian variance on the face crop)
     x1 = max(0, fx)
     y1 = max(0, fy)
     x2 = min(frame_w, fx + fw)
     y2 = min(frame_h, fy + fh)
     crop = frame[y1:y2, x1:x2]
 
-    if crop.size == 0:
-        return False
+    sharpness = 0.0
+    brightness = 0.0
+    if crop.size > 0:
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+        sharpness = cv2.Laplacian(gray, cv2.CV_64F).var()
+        brightness = gray.mean()
 
-    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-    sharpness = cv2.Laplacian(gray, cv2.CV_64F).var()
+    rejection_reason = "accepted"
+    if face_area_ratio < MIN_FACE_AREA_RATIO:
+        rejection_reason = "face_area_ratio_too_small"
+    elif crop.size == 0:
+        rejection_reason = "empty_crop"
+    elif sharpness < MIN_SHARPNESS:
+        rejection_reason = "sharpness_too_low"
 
-    if sharpness < MIN_SHARPNESS:
-        return False
+    logger.info(
+        f"[ENROLLMENT QUALITY LOG] Resolution: {frame_w}x{frame_h} | "
+        f"Face BBox: {fx},{fy},{fw},{fh} | Detected Face Size: {face_area} (Ratio: {face_area_ratio:.4f}, Threshold: {MIN_FACE_AREA_RATIO}) | "
+        f"Blur Score (Sharpness): {sharpness:.2f} (Threshold: {MIN_SHARPNESS}) | "
+        f"Brightness: {brightness:.2f} | "
+        f"Pose/Region info: {face_region} | "
+        f"Decision: {rejection_reason}"
+    )
 
-    return True
+    return rejection_reason == "accepted"
 
 
 def generate_embedding(frame: np.ndarray) -> Optional[list]:
