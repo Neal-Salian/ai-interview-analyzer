@@ -27,3 +27,11 @@ backend/test_pyav.py
 test_e2e.py
 backend/test_hang.py
 backend/test_startup.py
+
+backend/test_bg2.py
+
+backend/test_init.py
+
+test_bg.py
+
+test_starlette.py
