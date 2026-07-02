@@ -247,9 +247,13 @@ def enroll_from_frames(frames: list[np.ndarray]) -> EnrollmentResult:
                 face_region.get("h", 0),
             )
 
-        except Exception as e:
-            logger.debug(f"[TRACKER] Enrollment frame {i} skipped: {e}")
+        except ValueError as e:
+            logger.warning(f"[TRACKER] Frame {i}: No face detected by DeepFace (ValueError: {e})")
+            counts["no_face_detected"] += 1
             continue
+        except Exception as e:
+            logger.error(f"[TRACKER] Enrollment frame {i} failed with unexpected error: {e}", exc_info=True)
+            raise
 
     if not embeddings:
         logger.warning(f"[TRACKER] Enrollment failed. Rejection counts: {counts}")
