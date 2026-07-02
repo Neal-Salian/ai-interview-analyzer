@@ -106,12 +106,8 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"[STARTUP] Whisper preload failed (will retry on demand): {e}")
 
-    try:
-        from app.ml.tracking.candidate_tracker import _ensure_deepface_model
-        _ensure_deepface_model()
-        logger.info("[STARTUP] DeepFace model preloaded successfully.")
-    except Exception as e:
-        logger.warning(f"[STARTUP] DeepFace preload failed: {e}")
+    # DeepFace preload is skipped to prevent OOM crashes when combined with Whisper.
+    # It will be lazy-loaded upon first candidate enrollment.
 
     # ── Non-critical: Recover active streaming sessions ───────────────────
     try:
