@@ -162,11 +162,15 @@ export default function LiveDashboard() {
             }
 
             if (msg.type === 'transcript' && msg.text) {
+                console.log("frontend receives transcript");
                 const chunk: TranscriptChunk = {
                     text: msg.text,
                     timestamp: msg.timestamp ?? new Date().toISOString(),
                 }
-                setTranscripts(prev => [...prev, chunk])
+                setTranscripts(prev => {
+                    console.log("frontend appends transcript");
+                    return [...prev, chunk];
+                })
             }
 
             if (msg.type === 'question' && msg.question) {
@@ -225,12 +229,22 @@ export default function LiveDashboard() {
         return () => ws.close()
     }, [sessionId])
 
+    const autoScrollRef = useRef(true);
+
+    const handleScroll = () => {
+        if (!transcriptRef.current) return;
+        const { scrollTop, scrollHeight, clientHeight } = transcriptRef.current;
+        // Check if user is within 100px of the bottom
+        const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+        autoScrollRef.current = isNearBottom;
+    };
+
     // Auto-scroll transcript
     useEffect(() => {
-        if (transcriptRef.current) {
-            transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight
+        if (transcriptRef.current && autoScrollRef.current) {
+            transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
         }
-    }, [transcripts])
+    }, [transcripts]);
 
     const markAsked = async (id: string) => {
         setQuestions(prev => prev.map(q => q.id === id ? { ...q, was_asked: true } : q))
@@ -609,14 +623,9 @@ export default function LiveDashboard() {
                         <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', fontFamily: 'var(--font-heading)' }}>
                             Live Transcript
                         </div>
-                        {aiRuntime !== 'running' ? (
-                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1px dashed var(--border)', borderRadius: 'var(--radius)', padding: '2rem', marginTop: '10px' }}>
-                                <span className="material-symbols-outlined" style={{ color: 'var(--text-secondary)', fontSize: '24px', marginBottom: '8px' }}>forum</span>
-                                <span style={{ color: 'var(--text-secondary)', fontSize: '13px', textAlign: 'center' }}>Waiting for AI analysis...</span>
-                            </div>
-                        ) : (
                     <div
                         ref={transcriptRef}
+                        onScroll={handleScroll}
                         style={{ height: '600px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}
                     >
                         {transcripts.length === 0 && (
@@ -637,7 +646,6 @@ export default function LiveDashboard() {
                             </div>
                         ))}
                     </div>
-                        )}
                     </div>
                 </div>
 
