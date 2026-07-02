@@ -48,3 +48,15 @@ fix_enroll.py
 trigger_enroll.py
 
 backend/models/
+
+ # Local debugging scripts
+instrument.py
+instrument2.py
+test_pipeline.py
+test_pyav.py
+test_pyav2.py
+test_pyav3.py
+
+# Local media
+sample.mp4
+backend/sample.mp
