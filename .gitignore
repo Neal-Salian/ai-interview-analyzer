@@ -35,3 +35,17 @@ backend/test_init.py
 test_bg.py
 
 test_starlette.py
+
+backend/test_analyze.py
+
+backend/test_deepface_methods.py
+
+backend/test_enroll.py
+
+backend/test_face.py
+
+backend/test_face2.py
+
+backend/test_represent.py
+
+backend/test_sync.py
