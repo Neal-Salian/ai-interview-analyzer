@@ -254,12 +254,12 @@ def enroll_from_frames(frames: list[np.ndarray]) -> EnrollmentResult:
                 detector_backend=detector_backend,
                 enforce_detection=False,
             )
-            
+
             if not results or len(results) == 0:
                 logger.warning(f"[TRACKER] Frame {i}: No face detected by DeepFace")
                 counts["no_face_detected"] += 1
                 continue
-                
+
             if len(results) > 1:
                 logger.warning(f"[TRACKER] Frame {i}: Multiple faces detected ({len(results)})")
                 counts["multiple_faces_detected"] += 1

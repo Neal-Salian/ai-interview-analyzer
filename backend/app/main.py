@@ -52,9 +52,6 @@ async def lifespan(app: FastAPI):
     global _app_start_time
     _app_start_time = time.time()
     
-    # Start the watchdog
-    loop = asyncio.get_running_loop()
-    threading.Thread(target=watchdog_thread, args=(loop,), daemon=True, name="WatchdogThread").start()
 
     # ── Structured logging setup ──────────────────────────────────────────
     from app.core.logging_config import setup_logging
@@ -160,6 +157,10 @@ async def lifespan(app: FastAPI):
             
     except Exception as e:
         logger.warning(f"[STARTUP] Could not initiate active session recovery: {e}")
+
+    # Start the watchdog
+    loop = asyncio.get_running_loop()
+    threading.Thread(target=watchdog_thread, args=(loop,), daemon=True, name="WatchdogThread").start()
 
     yield
 
