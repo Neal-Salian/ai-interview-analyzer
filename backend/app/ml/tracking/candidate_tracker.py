@@ -26,9 +26,12 @@ logger = logging.getLogger(__name__)
 
 try:
     from deepface import DeepFace
-    from deepface.commons import distance as dst
 except ImportError:
     DeepFace = None
+
+try:
+    from deepface.commons import distance as dst
+except ImportError:
     dst = None
 
 # ── Tracking State Machine ───────────────────────────────────────────────────
@@ -213,10 +216,42 @@ def enroll_from_frames(frames: list[np.ndarray]) -> EnrollmentResult:
 
     for i, frame in enumerate(frames):
         try:
+            import inspect
+            session_id = "unknown"
+            try:
+                # Attempt to extract session_id from the caller's frame (rtmp_consumer.py)
+                caller_locals = inspect.currentframe().f_back.f_back.f_locals
+                if "session_id" in caller_locals:
+                    session_id = caller_locals["session_id"]
+            except Exception:
+                pass
+
+            frame_size = f"{frame.shape[1]}x{frame.shape[0]}"
+            detector_backend = _deepface_detector
+            model_name = _deepface_model_name
+            
+            # Get number of detected faces before calling represent
+            num_detected_faces = 0
+            try:
+                faces = DeepFace.extract_faces(
+                    img_path=frame,
+                    detector_backend=detector_backend,
+                    enforce_detection=False,
+                )
+                num_detected_faces = len(faces)
+            except Exception:
+                num_detected_faces = -1
+                
+            logger.info(
+                f"[TRACKER] Before represent | session_id: {session_id} | "
+                f"frame_size: {frame_size} | detector_backend: {detector_backend} | "
+                f"model_name: {model_name} | number of detected faces: {num_detected_faces}"
+            )
+
             results = DeepFace.represent(
                 img_path=frame,
-                model_name=_deepface_model_name,
-                detector_backend=_deepface_detector,
+                model_name=model_name,
+                detector_backend=detector_backend,
                 enforce_detection=False,
             )
             
@@ -247,13 +282,29 @@ def enroll_from_frames(frames: list[np.ndarray]) -> EnrollmentResult:
                 face_region.get("h", 0),
             )
 
-        except ValueError as e:
-            logger.warning(f"[TRACKER] Frame {i}: No face detected by DeepFace (ValueError: {e})")
-            counts["no_face_detected"] += 1
-            continue
         except Exception as e:
-            logger.error(f"[TRACKER] Enrollment frame {i} failed with unexpected error: {e}", exc_info=True)
-            raise
+            import traceback
+            import sys
+            
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            tb = traceback.format_exc()
+            
+            # Find the exact line that threw the exception
+            tb_frame = exc_traceback
+            while tb_frame.tb_next:
+                tb_frame = tb_frame.tb_next
+            exact_file = tb_frame.tb_frame.f_code.co_filename
+            exact_line = tb_frame.tb_lineno
+            
+            logger.error(
+                f"DeepFace.represent THREW AN EXCEPTION:\n"
+                f"Exception Type: {type(e).__name__}\n"
+                f"Exception Message: {str(e)}\n"
+                f"Exact File: {exact_file}\n"
+                f"Exact Line: {exact_line}\n"
+                f"Complete Traceback:\n{tb}"
+            )
+            raise e
 
     if not embeddings:
         logger.warning(f"[TRACKER] Enrollment failed. Rejection counts: {counts}")
