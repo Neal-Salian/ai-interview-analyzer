@@ -95,14 +95,18 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
 
                         # ── Enrollment capture ────────────────────────────
                         if tracking_status == TrackingStatus.ENROLLING:
+                            logger.info(f"[ENROLLMENT DEBUG 1] Enrollment requested. Buffer size before append: {len(enrollment_buffer)}")
                             enrollment_buffer.append(frame.copy())
 
                             if len(enrollment_buffer) >= ENROLLMENT_FRAMES_TARGET:
+                                logger.info(f"[ENROLLMENT DEBUG 2] Number of buffered frames: {len(enrollment_buffer)}")
                                 # Perform atomic enrollment
                                 result = await asyncio.to_thread(
                                     enroll_from_frames, enrollment_buffer
                                 )
                                 enrollment_buffer = []
+
+                                logger.info(f"[ENROLLMENT DEBUG 8] TrackingStatus before update: {tracking_status.value if hasattr(tracking_status, 'value') else tracking_status}")
 
                                 if result.success:
                                     from app.core.config import settings
@@ -117,6 +121,7 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                                         tracking_acquired_at=now,
                                         enrollment_error=None,
                                     )
+                                    logger.info(f"[ENROLLMENT DEBUG 10] Database (Redis) update result for success: SUCCESS")
                                     # Initialize OpenCV tracker
                                     cv_tracker = create_tracker()
                                     init_tracker(cv_tracker, frame, result.bbox)
@@ -129,8 +134,13 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                                         enrollment_start_time=None,
                                         enrollment_error=result.reason,
                                     )
+                                    logger.info(f"[ENROLLMENT DEBUG 10] Database (Redis) update result for failure: SUCCESS")
                                     log_event(logger, "enrollment_failed",
                                               session_id=session_id, reason=result.reason)
+
+                                post_update_meta = RuntimeManager.get_tracking_metadata(session_id)
+                                post_ts = post_update_meta.get("tracking_status")
+                                logger.info(f"[ENROLLMENT DEBUG 9] TrackingStatus after update: {post_ts.value if hasattr(post_ts, 'value') else post_ts}")
 
                             last_analyzed = now
                             continue  # Skip analysis during enrollment
@@ -234,6 +244,7 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                         current_ts = RuntimeManager.get_tracking_status(session_id)
                         if current_ts != last_tracking_status:
                             if last_tracking_status is not None:
+                                logger.info(f"[ENROLLMENT DEBUG 11] WebSocket event emitted for TrackingStatus change: {last_tracking_status} -> {current_ts}")
                                 await broadcast(session_id, {
                                     "type": "tracking_status",
                                     "status": current_ts.value if hasattr(current_ts, 'value') else str(current_ts),

@@ -243,6 +243,12 @@ def enroll_from_frames(frames: list[np.ndarray]) -> EnrollmentResult:
                 num_detected_faces = -1
                 
             logger.info(
+                f"[ENROLLMENT DEBUG 3] Number of faces detected per frame (frame {i}): {num_detected_faces}"
+            )
+            logger.info(
+                f"[ENROLLMENT DEBUG 4] DeepFace.represent() executes for frame {i}"
+            )
+            logger.info(
                 f"[TRACKER] Before represent | session_id: {session_id} | "
                 f"frame_size: {frame_size} | detector_backend: {detector_backend} | "
                 f"model_name: {model_name} | number of detected faces: {num_detected_faces}"
@@ -297,7 +303,7 @@ def enroll_from_frames(frames: list[np.ndarray]) -> EnrollmentResult:
             exact_line = tb_frame.tb_lineno
             
             logger.error(
-                f"DeepFace.represent THREW AN EXCEPTION:\n"
+                f"[ENROLLMENT DEBUG 5] Exact exception if represent() fails:\n"
                 f"Exception Type: {type(e).__name__}\n"
                 f"Exception Message: {str(e)}\n"
                 f"Exact File: {exact_file}\n"
@@ -308,6 +314,8 @@ def enroll_from_frames(frames: list[np.ndarray]) -> EnrollmentResult:
 
     if not embeddings:
         logger.warning(f"[TRACKER] Enrollment failed. Rejection counts: {counts}")
+        logger.info(f"[ENROLLMENT DEBUG 6] Number of embeddings generated: 0")
+        logger.info(f"[ENROLLMENT DEBUG 7] Whether centroid embedding is created: False")
         
         # Determine primary reason for failure based on counts
         if counts["multiple_faces_detected"] > 0:
@@ -319,6 +327,8 @@ def enroll_from_frames(frames: list[np.ndarray]) -> EnrollmentResult:
 
     # Average the embeddings for robustness
     avg_embedding = np.mean(embeddings, axis=0).tolist()
+    logger.info(f"[ENROLLMENT DEBUG 6] Number of embeddings generated: {len(embeddings)}")
+    logger.info(f"[ENROLLMENT DEBUG 7] Whether centroid embedding is created: True")
     logger.info(f"[TRACKER] Enrollment succeeded — averaged {len(embeddings)} embeddings")
     return EnrollmentResult(success=True, reason="success", embedding=avg_embedding, bbox=best_bbox)
 
