@@ -4,6 +4,34 @@ import time
 from contextlib import asynccontextmanager
 
 import httpx
+import sys
+import threading
+import traceback
+
+def watchdog_thread(loop):
+    import time
+    while True:
+        time.sleep(1.0)
+        # Check if the loop is responsive
+        start = time.time()
+        future = asyncio.run_coroutine_threadsafe(asyncio.sleep(0), loop)
+        try:
+            future.result(timeout=4.0)
+        except Exception:
+            # Event loop is blocked!
+            with open("deadlock_dump.txt", "w") as f:
+                f.write("="*80 + "\nDEADLOCK DETECTED!\n" + "="*80 + "\n")
+                for thread_id, frame in sys._current_frames().items():
+                    thread_name = "Unknown"
+                    for t in threading.enumerate():
+                        if t.ident == thread_id:
+                            thread_name = t.name
+                            break
+                    f.write(f"\n--- Thread: {thread_name} ({thread_id}) ---\n")
+                    traceback.print_stack(frame, file=f)
+            print("DEADLOCK DUMPED TO deadlock_dump.txt")
+            import os
+            os._exit(1)
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +50,11 @@ from app.ml.stream.rtmp_consumer import consume_stream
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _app_start_time
-    _app_start_time = time.monotonic()
+    _app_start_time = time.time()
+    
+    # Start the watchdog
+    loop = asyncio.get_running_loop()
+    threading.Thread(target=watchdog_thread, args=(loop,), daemon=True, name="WatchdogThread").start()
 
     # ── Structured logging setup ──────────────────────────────────────────
     from app.core.logging_config import setup_logging
@@ -56,26 +88,33 @@ async def lifespan(app: FastAPI):
         logger.critical(f"[STARTUP] Metric discovery failed — aborting: {e}")
         raise
 
-    # ── Non-critical: Preload ML models in background ─────────────────────
-    async def preload_models():
-        from app.core.logging_config import log_event
-        logger.info("[STARTUP] Starting background model preload...")
+    # ── Critical: Preload ML libraries synchronously ────────────────────────
+    # We must preload heavy ML libraries sequentially on the main thread BEFORE 
+    # the server starts accepting connections. This prevents macOS GCD deadlocks 
+    # and Python import lock races if a request tries to import them concurrently.
+    from app.core.logging_config import log_event
+    logger.info("[STARTUP] Starting synchronous ML model preload...")
+    
+    try:
+        # Pre-import PyAV to avoid AVFoundation deadlocks when spawned in tasks
+        import av
+        logger.info("[STARTUP] PyAV imported successfully.")
+    except Exception as e:
+        logger.warning(f"[STARTUP] PyAV import failed: {e}")
         
-        try:
-            from app.ml.speech.transcriber import _get_model as preload_whisper
-            await asyncio.to_thread(preload_whisper)
-            logger.info("[STARTUP] Whisper model preloaded successfully.")
-        except Exception as e:
-            logger.warning(f"[STARTUP] Whisper preload failed (will retry on demand): {e}")
+    try:
+        from app.ml.speech.transcriber import _get_model as preload_whisper
+        preload_whisper()
+        logger.info("[STARTUP] Whisper model preloaded successfully.")
+    except Exception as e:
+        logger.warning(f"[STARTUP] Whisper preload failed (will retry on demand): {e}")
 
-        try:
-            from app.ml.tracking.candidate_tracker import _ensure_deepface_model
-            await asyncio.to_thread(_ensure_deepface_model)
-            logger.info("[STARTUP] DeepFace model preloaded successfully.")
-        except Exception as e:
-            logger.warning(f"[STARTUP] DeepFace preload failed: {e}")
-            
-    asyncio.create_task(preload_models())
+    try:
+        from app.ml.tracking.candidate_tracker import _ensure_deepface_model
+        _ensure_deepface_model()
+        logger.info("[STARTUP] DeepFace model preloaded successfully.")
+    except Exception as e:
+        logger.warning(f"[STARTUP] DeepFace preload failed: {e}")
 
     # ── Non-critical: Recover active streaming sessions ───────────────────
     try:
