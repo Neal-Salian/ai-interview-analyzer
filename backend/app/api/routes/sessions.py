@@ -515,10 +515,11 @@ def initialize_ai(
     db.commit()
     db.refresh(session)
     
+    from app.runtime.manager import RuntimeManager, run_initialize_session
     RuntimeManager.set_initializing(str(session.id))
     log_event(logger, "runtime_initializing", session_id=str(session.id))
     
-    background_tasks.add_task(RuntimeManager.initialize_session, str(session.id))
+    background_tasks.add_task(run_initialize_session, str(session.id))
     
     return {
         "runtime": session.ai_runtime_status,
@@ -562,7 +563,7 @@ async def start_analysis(
         bg_db = SessionLocal()
         try:
             bg_session = bg_db.query(InterviewSessionModel).filter(
-                InterviewSessionModel.id == str(session.id)
+                InterviewSessionModel.id == session.id
             ).first()
             await RuntimeManager.start_analysis(
                 str(session.id),
