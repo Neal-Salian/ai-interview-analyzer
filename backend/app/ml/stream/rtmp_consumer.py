@@ -333,7 +333,6 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                             f"[ATTENTION] {attention['direction']}"
                         )
                         last_analyzed = now
-
                     except asyncio.CancelledError:
                         raise
                     except Exception as e:
@@ -341,13 +340,23 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
 
             # ── Audio — transcription + question generation ───────────────────────
             elif packet.stream.type == 'audio':
-                audio_buffer.append(packet)
+                try:
+                    for frame in packet.decode():
+                        audio_buffer.append(frame)
+                except Exception as e:
+                    logger.warning(f"[RTMP] Audio decode error: {e}")
 
-                if len(audio_buffer) >= 900:
-                    packets_to_process = audio_buffer[:]
+                if len(audio_buffer) >= 100:
+                    frames_to_process = audio_buffer[:]
                     audio_buffer = []
 
-                    logger.info(f"audio chunks received")
+                    if frames_to_process:
+                        f = frames_to_process[0]
+                        duration = sum(fr.samples for fr in frames_to_process) / f.sample_rate if f.sample_rate else 0
+                        logger.info(f"[RTMP] audio packets received: {len(frames_to_process)}")
+                        logger.info(f"[RTMP] sample rate: {f.sample_rate}")
+                        logger.info(f"[RTMP] channels: {len(f.layout.channels) if f.layout else 'unknown'}")
+                        logger.info(f"[RTMP] duration: {duration:.2f}s")
 
                     # ── Retry loop for transcription ──────────────────────────
                     # Whisper can transiently fail (OOM, corrupted frame, CUDA
@@ -363,7 +372,7 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                     for attempt in range(1, MAX_TRANSCRIBE_RETRIES + 1):
                         try:
                             transcript = await asyncio.to_thread(
-                                transcribe_chunk, packets_to_process
+                                transcribe_chunk, frames_to_process
                             )
                             logger.info("transcription produced")
                             break  # success
@@ -384,7 +393,7 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                         # would cause an infinite failure loop.
                         logger.error(
                             f"[TRANSCRIPT] all {MAX_TRANSCRIBE_RETRIES} retries "
-                            f"exhausted — dropping {len(packets_to_process)} "
+                            f"exhausted — dropping {len(frames_to_process)} "
                             f"audio packets for session {session_id}."
                         )
                         continue  # skip to next packet in the stream
@@ -462,7 +471,7 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                     
                         voice_result = await asyncio.to_thread(
                             detect_voice_anomaly,
-                            get_audio_array(packets_to_process)
+                            get_audio_array(frames_to_process)
                         )
                         if voice_result.get("anomaly_detected"):
                             await asyncio.to_thread(

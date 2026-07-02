@@ -20,19 +20,25 @@ def _get_model():
                     raise FileNotFoundError(f"Whisper weights not found at {weights_path}. Automatic download disabled.")
                 model = whisper.load_model("small", download_root="/app/models")  # Phase 4: upgraded from "base" for ~4x accuracy
                 logger.info("model loaded successfully")
+                logger.info(f"[WHISPER] model loaded from scratch: {id(model)}")
+            else:
+                logger.info(f"[WHISPER] model loaded from preload: {id(model)}")
+    else:
+        logger.info(f"[WHISPER] model loaded from preload: {id(model)}")
     return model
 
 import av
 
-def get_audio_array(audio_packets: list) -> np.ndarray:
+def get_audio_array(audio_frames: list) -> np.ndarray:
     resampler = av.AudioResampler(format='flt', layout='mono', rate=16000)
     frames = []
-    for packet in audio_packets:
-        # PyAV demuxes Packet objects, they need to be decoded into AudioFrames
-        for frame in packet.decode():
-            # Resample to 16kHz mono float for Whisper
-            for rf in resampler.resample(frame):
-                frames.append(rf.to_ndarray().flatten())
+    
+    # audio_frames already contains decoded av.AudioFrame objects
+    for frame in audio_frames:
+        # Resample to 16kHz mono float for Whisper
+        for rf in resampler.resample(frame):
+            frames.append(rf.to_ndarray().flatten())
+            
     # Flush resampler
     for rf in resampler.resample(None) or []:
         frames.append(rf.to_ndarray().flatten())
@@ -41,9 +47,18 @@ def get_audio_array(audio_packets: list) -> np.ndarray:
         return np.array([], dtype=np.float32)
     return np.concatenate(frames).astype(np.float32)
 
-def transcribe_chunk(audio_packets: list) -> str:
-    audio_array = get_audio_array(audio_packets)
+def transcribe_chunk(audio_frames: list) -> str:
+    """
+    Takes a list of audio frames, converts to numpy array, cleans audio,
+    and returns transcript.
+    """
+    import time
+    start_time = time.time()
+    logger.info("[WHISPER] transcribe_chunk() is entered")
+    
+    audio_array = get_audio_array(audio_frames)
     if len(audio_array) == 0:
+        logger.info("[WHISPER] transcribe_chunk() exits (empty audio)")
         return ""
 
     # Normalize (with epsilon to prevent division by zero)
@@ -57,7 +72,11 @@ def transcribe_chunk(audio_packets: list) -> str:
         logger.warning(f"[TRANSCRIBER] audio cleaning failed, using raw: {e}")
 
     m = _get_model()
-    result = m.transcribe(audio_array, fp16=False)
+    logger.info(f"[WHISPER] which model instance is used: {id(m)}")
+    logger.info(f"[WHISPER] memory address/id: {id(m)}")
+    
+    # Whisper can hang on silence with temperature fallback, so disable fallback and force English
+    result = m.transcribe(audio_array, fp16=False, temperature=0.0, language="en", condition_on_previous_text=False)
     
     text = result["text"].strip()
 
@@ -67,5 +86,10 @@ def transcribe_chunk(audio_packets: list) -> str:
         text = clean_transcript(text)
     except Exception as e:
         logger.warning(f"[TRANSCRIBER] transcript cleaning failed, using raw: {e}")
+
+    time_taken = time.time() - start_time
+    logger.info(f"[WHISPER] transcribe_chunk() exits")
+    logger.info(f"[WHISPER] time taken: {time_taken:.2f}s")
+    logger.info(f"[WHISPER] returned text: {text}")
 
     return text
