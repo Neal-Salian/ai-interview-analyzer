@@ -26,3 +26,4 @@ backend/test_runtime_manager.py
 backend/test_pyav.py
 test_e2e.py
 backend/test_hang.py
+backend/test_startup.py
