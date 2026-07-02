@@ -25,3 +25,4 @@ test_candidate_creation.py
 backend/test_runtime_manager.py
 backend/test_pyav.py
 test_e2e.py
+backend/test_hang.py
