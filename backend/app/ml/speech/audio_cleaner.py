@@ -20,6 +20,20 @@ def clean_audio(
     audio_array: np.ndarray,
     sample_rate: int = 16000,
 ) -> np.ndarray:
+    logger.info(f"audio cleaner entered: input length={len(audio_array) if audio_array is not None else 0}")
+    if audio_array is None or len(audio_array) == 0:
+        logger.info("audio cleaner returned empty")
+        return audio_array
+    audio_array = _reduce_noise(audio_array, sample_rate)
+    audio_array = _trim_silence(audio_array)
+    audio_array = _normalize(audio_array)
+    logger.info(f"audio cleaner returned: output length={len(audio_array)}")
+    return audio_array
+
+def clean_audio_old(
+    audio_array: np.ndarray,
+    sample_rate: int = 16000,
+) -> np.ndarray:
     """
     Clean audio for better transcription quality.
 

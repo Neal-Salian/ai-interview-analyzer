@@ -45,6 +45,7 @@ _MULTI_SPACE = re.compile(r"\s{2,}")
 
 
 def clean_transcript(text: str) -> str:
+    logger.info(f"raw transcript: '{text}'")
     """
     Clean Whisper transcript output.
 
@@ -81,5 +82,5 @@ def clean_transcript(text: str) -> str:
     if text and text[0].islower():
         text = text[0].upper() + text[1:]
 
-    logger.info("transcript cleaner output")
+    logger.info(f"cleaned transcript: '{text}'")
     return text
