@@ -211,7 +211,7 @@ def enroll_from_frames(frames: list[np.ndarray]) -> EnrollmentResult:
         "insufficient_quality": 0
     }
 
-    for frame in frames:
+    for i, frame in enumerate(frames):
         try:
             results = DeepFace.represent(
                 img_path=frame,
@@ -221,16 +221,19 @@ def enroll_from_frames(frames: list[np.ndarray]) -> EnrollmentResult:
             )
             
             if not results or len(results) == 0:
+                logger.warning(f"[TRACKER] Frame {i}: No face detected by DeepFace")
                 counts["no_face_detected"] += 1
                 continue
                 
             if len(results) > 1:
+                logger.warning(f"[TRACKER] Frame {i}: Multiple faces detected ({len(results)})")
                 counts["multiple_faces_detected"] += 1
                 continue
 
             face_region = results[0].get("facial_area", {})
 
             if not assess_frame_quality(frame, face_region):
+                logger.warning(f"[TRACKER] Frame {i}: Failed quality assessment (Region: {face_region})")
                 counts["insufficient_quality"] += 1
                 continue
 
@@ -245,7 +248,7 @@ def enroll_from_frames(frames: list[np.ndarray]) -> EnrollmentResult:
             )
 
         except Exception as e:
-            logger.debug(f"[TRACKER] Enrollment frame skipped: {e}")
+            logger.debug(f"[TRACKER] Enrollment frame {i} skipped: {e}")
             continue
 
     if not embeddings:

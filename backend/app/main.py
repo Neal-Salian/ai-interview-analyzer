@@ -408,11 +408,11 @@ async def _handle_enroll_candidate(session_id: str, websocket: WebSocket):
             meta = RuntimeManager.get_tracking_metadata(session_id)
             error_reason = meta.get("enrollment_error") if meta else None
             
-            if status == TrackingStatus.NOT_ENROLLED and error_reason:
+            if status == TrackingStatus.NOT_ENROLLED:
                 await websocket.send_json({
                     "type": "enrollment_status",
                     "status": "failed",
-                    "reason": error_reason,
+                    "reason": error_reason or "Enrollment failed. No face detected or candidate lost.",
                 })
             else:
                 # Something else transitioned the state (e.g. session ended)
