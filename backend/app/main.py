@@ -180,6 +180,12 @@ app.add_middleware(
     allow_credentials=True,  # Important for cookies
 )
 
+from fastapi import Request
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger.info(f"--- REQUEST RECEIVED: {request.method} {request.url} ---")
+    return await call_next(request)
+
 app.include_router(zoom_webhook.router, prefix="/api")
 app.include_router(zoom_oauth.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
