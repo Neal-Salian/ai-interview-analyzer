@@ -72,3 +72,8 @@ test_latency.py
 test_overlap.py
 test_whisper.py
 backend/app/ml/stream/rtmp_consumer_overlap.py
+
+
+# Local runtime investigation scripts
+backend/reproduce.py
+backend/test_regression.py
