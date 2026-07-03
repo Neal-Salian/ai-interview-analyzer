@@ -57,155 +57,6 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
         transcript_chunk_count = 0
         integrity_state = {}  # Phase 3: persistent state for liveness tracking
 
-        import string
-        def _normalize(s):
-            return s.lower().strip(string.punctuation)
-
-        def _remove_duplicate_overlap(prev_text: str, curr_text: str) -> str:
-            if not prev_text or not curr_text: return curr_text
-            prev_words = prev_text.split()
-            curr_words = curr_text.split()
-            max_overlap = min(len(prev_words), len(curr_words), 20)
-            for i in range(max_overlap, 0, -1):
-                prev_slice = [_normalize(w) for w in prev_words[-i:]]
-                curr_slice = [_normalize(w) for w in curr_words[:i]]
-                if prev_slice == curr_slice:
-                    return " ".join(curr_words[i:])
-            return curr_text
-
-        audio_queue = asyncio.Queue()
-        
-        async def _audio_worker():
-            nonlocal transcript_chunk_count
-            prev_transcript_text = ""
-            while True:
-                frames_to_process = await audio_queue.get()
-                if frames_to_process is None:
-                    break
-
-                if frames_to_process:
-                    f = frames_to_process[0]
-                    duration = sum(fr.samples for fr in frames_to_process) / f.sample_rate if f.sample_rate else 0
-                    logger.info(f"[RTMP] audio packets received: {len(frames_to_process)}")
-                    logger.info(f"[RTMP] sample rate: {f.sample_rate}")
-                    logger.info(f"[RTMP] channels: {len(f.layout.channels) if f.layout else 'unknown'}")
-                    logger.info(f"[RTMP] duration: {duration:.2f}s")
-
-                MAX_TRANSCRIBE_RETRIES = 2
-                transcript = None
-
-                for attempt in range(1, MAX_TRANSCRIBE_RETRIES + 1):
-                    try:
-                        whisper_start = time.time()
-                        transcript = await asyncio.to_thread(
-                            transcribe_chunk, frames_to_process
-                        )
-                        logger.info(f"[TIMING] whisper inference took {(time.time() - whisper_start)*1000:.1f}ms")
-                        logger.info("transcription produced")
-                        break
-                    except asyncio.CancelledError:
-                        raise
-                    except Exception as e:
-                        logger.warning(
-                            f"[TRANSCRIPT] attempt {attempt}/{MAX_TRANSCRIBE_RETRIES} "
-                            f"failed ({type(e).__name__}: {e})"
-                        )
-                        if attempt < MAX_TRANSCRIBE_RETRIES:
-                            await asyncio.sleep(0.5)
-
-                if transcript is None:
-                    logger.error(f"[TRANSCRIPT] all retries exhausted")
-                    continue
-
-                transcript_chunk_count += 1
-
-                if job_id:
-                    try:
-                        from app.ml.speech.vocabulary_corrector import correct_transcript
-                        from app.db.crud import get_job
-                        job = await asyncio.to_thread(get_job, job_id)
-                        if job:
-                            transcript = correct_transcript(
-                                transcript,
-                                job_skills=job.extracted_skills or [],
-                                candidate_name="",
-                            )
-                    except Exception as e:
-                        logger.warning(f"[VOCAB CORRECTION] {e}")
-
-                if not transcript or not transcript.strip():
-                    continue
-
-                # Phase 4: Deduplicate overlap
-                transcript = _remove_duplicate_overlap(prev_transcript_text, transcript)
-                prev_transcript_text = transcript
-
-                if not transcript or not transcript.strip():
-                    continue
-
-                await asyncio.to_thread(save_transcript, session_id, transcript)
-                logger.info("transcript stored")
-
-                try:
-                    sentiment = await asyncio.to_thread(
-                        score_sentiment, transcript
-                    )
-                    await broadcast(session_id, {
-                        "type": "sentiment",
-                        "label": sentiment["label"],
-                        "score": sentiment["score"],
-                    })
-                except Exception as e:
-                    logger.warning(f"[SENTIMENT ERROR] {e}")
-
-                await broadcast(session_id, {
-                    "type": "transcript",
-                    "text": transcript,
-                })
-                logger.info("websocket broadcast")
-
-                if transcript_chunk_count % (LLM_EVERY_N_CHUNKS + 1) == 0:
-                    task = asyncio.create_task(
-                        _generate_and_broadcast_questions(
-                            session_id=session_id,
-                            transcript=transcript,
-                            job_id=job_id,
-                        )
-                    )
-                    try:
-                        from app.core.registry import add_tier2_task
-                        add_tier2_task(session_id, task)
-                    except Exception as e:
-                        pass
-
-                try:
-                    from app.ml.integrity.voice_detector import detect_voice_anomaly
-                    from app.ml.speech.transcriber import get_audio_array
-                
-                    voice_result = await asyncio.to_thread(
-                        detect_voice_anomaly,
-                        get_audio_array(frames_to_process)
-                    )
-                    if voice_result.get("anomaly_detected"):
-                        await asyncio.to_thread(
-                            save_integrity_event, session_id, {
-                                "event_type": f"voice_{voice_result['anomaly_type']}",
-                                "severity": "warning",
-                                "details": voice_result.get("details", {}),
-                            }
-                        )
-                        await broadcast(session_id, {
-                            "type": "integrity_alert",
-                            "event_type": f"voice_{voice_result['anomaly_type']}",
-                            "severity": "warning",
-                            "details": str(voice_result.get("details", "")),
-                        })
-                except ImportError:
-                    pass
-                except Exception as e:
-                    pass
-
-        audio_task = asyncio.create_task(_audio_worker())
 
         # ── Candidate tracking state (local to consumer) ─────────────
         enrollment_buffer = []       # Captured frames during enrollment
@@ -223,14 +74,14 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                 receive_ts = time.time()
                 packet = await asyncio.to_thread(lambda d: next(d, None), demuxer)
                 if packet is None:
-                    break
+                    raise ConnectionError("Stream reached unexpected EOF (network drop?)")
                 read_duration = time.time() - receive_ts
                 logger.info(f"[TIMING] packet receive took {read_duration*1000:.1f}ms")
             except StopIteration:
-                break
+                raise ConnectionError("Stream reached unexpected StopIteration (network drop?)")
             except Exception as e:
                 logger.warning(f"[CONSUMER] stream read error or timeout for {session_id}: {e}")
-                break
+                raise ConnectionError(f"Stream read error: {e}") from e
 
             if packet.dts is None:
                 continue
@@ -508,20 +359,132 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
 
                 if len(audio_buffer) >= 100:
                     frames_to_process = audio_buffer[:]
-                    await audio_queue.put(frames_to_process)
-                    # Phase 4: Overlap by 50 frames (~1.06s)
-                    audio_buffer = audio_buffer[-50:]
+                    audio_buffer = []
+
+                    if frames_to_process:
+                        f = frames_to_process[0]
+                        duration = sum(fr.samples for fr in frames_to_process) / f.sample_rate if f.sample_rate else 0
+                        logger.info(f"[RTMP] audio packets received: {len(frames_to_process)}")
+                        logger.info(f"[RTMP] sample rate: {f.sample_rate}")
+                        logger.info(f"[RTMP] channels: {len(f.layout.channels) if f.layout else 'unknown'}")
+                        logger.info(f"[RTMP] duration: {duration:.2f}s")
+
+                    MAX_TRANSCRIBE_RETRIES = 2
+                    transcript = None
+
+                    for attempt in range(1, MAX_TRANSCRIBE_RETRIES + 1):
+                        try:
+                            whisper_start = time.time()
+                            transcript = await asyncio.to_thread(
+                                transcribe_chunk, frames_to_process
+                            )
+                            logger.info(f"[TIMING] whisper inference took {(time.time() - whisper_start)*1000:.1f}ms")
+                            logger.info("transcription produced")
+                            break
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception as e:
+                            logger.warning(
+                                f"[TRANSCRIPT] attempt {attempt}/{MAX_TRANSCRIBE_RETRIES} "
+                                f"failed ({type(e).__name__}: {e})"
+                            )
+                            if attempt < MAX_TRANSCRIBE_RETRIES:
+                                await asyncio.sleep(0.5)
+
+                    if transcript is None:
+                        logger.error(
+                            f"[TRANSCRIPT] all {MAX_TRANSCRIBE_RETRIES} retries "
+                            f"exhausted — dropping {len(frames_to_process)} "
+                            f"audio packets for session {session_id}."
+                        )
+                        continue
+
+                    transcript_chunk_count += 1
+
+                    if job_id:
+                        try:
+                            from app.ml.speech.vocabulary_corrector import correct_transcript
+                            from app.db.crud import get_job
+                            job = await asyncio.to_thread(get_job, job_id)
+                            if job:
+                                transcript = correct_transcript(
+                                    transcript,
+                                    job_skills=job.extracted_skills or [],
+                                    candidate_name="",
+                                )
+                        except Exception as e:
+                            logger.warning(f"[VOCAB CORRECTION] {e}")
+
+                    if not transcript or not transcript.strip():
+                        continue
+
+                    await asyncio.to_thread(save_transcript, session_id, transcript)
+                    logger.info("transcript stored")
+
+                    try:
+                        sentiment = await asyncio.to_thread(
+                            score_sentiment, transcript
+                        )
+                        await broadcast(session_id, {
+                            "type": "sentiment",
+                            "label": sentiment["label"],
+                            "score": sentiment["score"],
+                        })
+                    except Exception as e:
+                        logger.warning(f"[SENTIMENT ERROR] {e}")
+
+                    await broadcast(session_id, {
+                        "type": "transcript",
+                        "text": transcript,
+                    })
+                    logger.info("websocket broadcast")
+
+                    if transcript_chunk_count % (LLM_EVERY_N_CHUNKS + 1) == 0:
+                        task = asyncio.create_task(
+                            _generate_and_broadcast_questions(
+                                session_id=session_id,
+                                transcript=transcript,
+                                job_id=job_id,
+                            )
+                        )
+                        try:
+                            from app.core.registry import add_tier2_task
+                            add_tier2_task(session_id, task)
+                        except Exception as e:
+                            pass
+
+                    try:
+                        from app.ml.integrity.voice_detector import detect_voice_anomaly
+                        from app.ml.speech.transcriber import get_audio_array
+                    
+                        voice_result = await asyncio.to_thread(
+                            detect_voice_anomaly,
+                            get_audio_array(frames_to_process)
+                        )
+                        if voice_result.get("anomaly_detected"):
+                            await asyncio.to_thread(
+                                save_integrity_event, session_id, {
+                                    "event_type": f"voice_{voice_result['anomaly_type']}",
+                                    "severity": "warning",
+                                    "details": voice_result.get("details", {}),
+                                }
+                            )
+                            await broadcast(session_id, {
+                                "type": "integrity_alert",
+                                "event_type": f"voice_{voice_result['anomaly_type']}",
+                                "severity": "warning",
+                                "details": str(voice_result.get("details", "")),
+                            })
+                    except ImportError:
+                        pass
+                    except Exception as e:
+                        pass
 
         logger.info(f"[CONSUMER] Stream ended for session {session_id}")
     except Exception as e:
         logger.error(f"[CONSUMER] Error during stream processing: {e}")
         raise
     finally:
-        try:
-            await audio_queue.put(None)
-            await audio_task
-        except Exception:
-            pass
         if container:
             try:
                 await asyncio.to_thread(container.close)
