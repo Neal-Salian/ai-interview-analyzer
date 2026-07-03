@@ -39,6 +39,13 @@ async def teardown_session(session_id: str, db: DBSession) -> None:
     from app.runtime.manager import RuntimeManager
     RuntimeManager.clear(session_id)
 
+    # Step 1.6 — Clear live competency tracking state
+    try:
+        from app.ml.analysis.live_competency_tracker import LiveCompetencyTracker
+        LiveCompetencyTracker.clear(session_id)
+    except Exception:
+        pass  # Non-critical — state will be GC'd anyway
+
     # Step 2 — mark the DB record completed
     updated = crud.mark_session_completed(db, session_id)
     if not updated:

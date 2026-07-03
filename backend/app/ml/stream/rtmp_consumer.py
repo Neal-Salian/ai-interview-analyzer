@@ -439,6 +439,17 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                     })
                     logger.info("websocket broadcast")
 
+                    # ── Live competency evidence tracking (additive — no LLM) ──
+                    try:
+                        from app.ml.analysis.live_competency_tracker import LiveCompetencyTracker
+                        LiveCompetencyTracker.update_from_transcript(session_id, transcript)
+                        await broadcast(session_id, {
+                            "type": "live_competency",
+                            **LiveCompetencyTracker.get_snapshot(session_id),
+                        })
+                    except Exception as e:
+                        logger.debug(f"[LIVE_COMPETENCY] update failed (non-fatal): {e}")
+
                     if transcript_chunk_count % (LLM_EVERY_N_CHUNKS + 1) == 0:
                         task = asyncio.create_task(
                             _generate_and_broadcast_questions(
@@ -545,6 +556,13 @@ async def _generate_and_broadcast_questions(
             })
 
             logger.info(f"[QUESTION] [{q['triggered_by']}] {q['text'][:60]}")
+
+            # Link question ID to live competency tracker
+            try:
+                from app.ml.analysis.live_competency_tracker import LiveCompetencyTracker
+                LiveCompetencyTracker.link_question(session_id, question_id, transcript)
+            except Exception:
+                pass  # Non-critical — never block question pipeline
 
         # Log STAR feedback and confidence score — used in session report
         if result.get("star_feedback"):
