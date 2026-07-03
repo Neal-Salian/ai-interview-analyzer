@@ -150,13 +150,17 @@ class RuntimeManager:
         state["current_step"] = "Starting RTMP consumer..."
         state["progress"] = 100
 
+        # Extract values BEFORE commit to avoid lazy-loading later
+        # which would start a new transaction held open across the await.
+        zoom_meeting_id = getattr(session_model, "zoom_meeting_id", None) if session_model else None
+        job_id = str(session_model.job_id) if session_model and session_model.job_id else ""
+
         if db and session_model:
             session_model.ai_runtime_status = "starting_rtmp"
             db.commit()
-            db.refresh(session_model)
+            # Do NOT call db.refresh(session_model) here to avoid holding a SQLite shared lock
 
         # ── Build RTMP URL from zoom_meeting_id ─────────────────────────
-        zoom_meeting_id = getattr(session_model, "zoom_meeting_id", None) if session_model else None
         if not zoom_meeting_id:
             reason = "No Zoom meeting ID — cannot determine RTMP stream URL."
             cls.set_failed(session_id, "rtmp_consumer", reason)
@@ -174,8 +178,7 @@ class RuntimeManager:
         log_event(logger, "rtmp_start_requested",
                   rtmp_url=rtmp_url, **log_kwargs)
 
-        job_id = str(session_model.job_id) if session_model and session_model.job_id else ""
-
+        # (job_id is already extracted above before commit)
         result = await rtmp_service.start(
             session_id=session_id,
             rtmp_url=rtmp_url,
