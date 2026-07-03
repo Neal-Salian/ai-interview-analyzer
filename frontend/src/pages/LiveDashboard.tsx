@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import Navbar from '../components/Navbar'
-import type { EmotionFrame, TranscriptChunk, SuggestedQuestion, WSMessage } from '../types'
+import type { EmotionFrame, TranscriptChunk, SuggestedQuestion, WSMessage, LiveCompetencyItem, LiveEvidenceGroup } from '../types'
 import client from '../api/client'
 import PageTransition from '../components/PageTransition';
 import { SkeletonCard, SkeletonText } from '../components/Skeleton';
@@ -53,6 +53,10 @@ export default function LiveDashboard() {
     const [enrollmentReason, setEnrollmentReason] = useState<string>('')
     const [toasts, setToasts] = useState<{id: string, message: string, type: 'info'|'success'|'warning'|'error'}[]>([])
     const lastToastRef = useRef<Record<string, number>>({})
+
+    // Live Competency Evidence Tracking
+    const [liveCompetencies, setLiveCompetencies] = useState<LiveCompetencyItem[]>([])
+    const [latestEvidence, setLatestEvidence] = useState<LiveEvidenceGroup[]>([])
 
     const showToast = (message: string, type: 'info'|'success'|'warning'|'error' = 'info') => {
         const now = Date.now()
@@ -213,6 +217,11 @@ export default function LiveDashboard() {
                 } else if (msg.status === 'enrolling') {
                     showToast('Enrollment started...', 'info')
                 }
+            }
+
+            if (msg.type === 'live_competency' && msg.competencies) {
+                setLiveCompetencies(msg.competencies)
+                setLatestEvidence(msg.latest_evidence || [])
             }
 
             if (msg.type === 'tracking_status' && msg.status) {
@@ -533,6 +542,123 @@ export default function LiveDashboard() {
                                 </div>
                             ))}
                         </div>
+                        )}
+                    </div>
+
+                    {/* Live Competency Evidence Tracking */}
+                    <div style={cardStyle}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                            <div style={{ fontSize: '14px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700, fontFamily: 'var(--font-heading)' }}>
+                                Competency Analysis
+                            </div>
+                            {aiRuntime === 'running' && liveCompetencies.length > 0 && (
+                                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--success)', display: 'inline-block', animation: 'pulse 2s ease-in-out infinite' }} />
+                                    Collecting Evidence
+                                </span>
+                            )}
+                        </div>
+                        {aiRuntime !== 'running' ? (
+                            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px', background: 'var(--bg)', borderRadius: 'var(--radius)' }}>
+                                Competency insights will appear after AI Analysis starts.
+                            </div>
+                        ) : liveCompetencies.length === 0 ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1px dashed var(--border)', borderRadius: 'var(--radius)', padding: '2rem', minHeight: '100px' }}>
+                                <span className="material-symbols-outlined" style={{ color: 'var(--text-secondary)', fontSize: '24px', marginBottom: '8px' }}>psychology</span>
+                                <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Waiting for transcript data...</span>
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                {liveCompetencies.map(c => {
+                                    const statusColor = c.status === 'Ready' ? 'var(--success)' : c.status === 'Building' ? '#3b82f6' : '#f59e0b'
+                                    const confidenceColor = c.confidence === 'High' ? 'var(--success)' : c.confidence === 'Medium' ? '#3b82f6' : 'var(--text-secondary)'
+                                    const barPercent = Math.min(c.evidence_count / 5 * 100, 100)
+                                    return (
+                                        <div key={c.competency_key} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '14px', transition: 'all 0.3s ease' }}>
+                                            {/* Competency header */}
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                                                <div style={{ fontWeight: 600, fontSize: '14px' }}>{c.display_name}</div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span style={{
+                                                        fontSize: '11px', fontWeight: 600, padding: '2px 8px',
+                                                        borderRadius: '10px', background: `${statusColor}18`,
+                                                        color: statusColor, border: `1px solid ${statusColor}40`,
+                                                    }}>
+                                                        {c.status === 'Collecting' ? 'Collecting' : c.status === 'Building' ? 'Building Evidence' : 'Ready'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            {/* Evidence progress bar */}
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', minWidth: '55px' }}>Evidence</div>
+                                                <div style={{ flex: 1, height: '6px', background: 'var(--border)', borderRadius: '3px', overflow: 'hidden' }}>
+                                                    <div style={{
+                                                        height: '100%', borderRadius: '3px',
+                                                        width: `${barPercent}%`,
+                                                        background: `linear-gradient(90deg, ${statusColor}, ${statusColor}cc)`,
+                                                        transition: 'width 0.6s ease-out',
+                                                    }} />
+                                                </div>
+                                                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', minWidth: '16px', textAlign: 'right' }}>{c.evidence_count}</span>
+                                            </div>
+                                            {/* Questions and confidence */}
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                                                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginRight: '4px' }}>Questions</span>
+                                                    {c.question_ids.length === 0 ? (
+                                                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontStyle: 'italic' }}>—</span>
+                                                    ) : (
+                                                        c.question_ids.slice(0, 5).map((qId, idx) => (
+                                                            <span key={qId} style={{
+                                                                fontSize: '10px', fontWeight: 600, padding: '1px 6px',
+                                                                borderRadius: '4px', background: 'var(--accent)', color: '#fff',
+                                                                opacity: 0.85,
+                                                            }}>
+                                                                Q{idx + 1}
+                                                            </span>
+                                                        ))
+                                                    )}
+                                                </div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Confidence</span>
+                                                    <span style={{
+                                                        fontSize: '11px', fontWeight: 600, padding: '1px 8px',
+                                                        borderRadius: '10px', color: confidenceColor,
+                                                        background: `${confidenceColor}14`,
+                                                        border: `1px solid ${confidenceColor}30`,
+                                                    }}>
+                                                        {c.confidence}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+
+                                {/* Latest Evidence Panel */}
+                                {latestEvidence.length > 0 && (
+                                    <div style={{ marginTop: '4px', padding: '14px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+                                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px', fontWeight: 700, fontFamily: 'var(--font-heading)' }}>
+                                            Latest Evidence
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                            {latestEvidence.map(eg => (
+                                                <div key={eg.competency}>
+                                                    <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '4px', color: 'var(--accent)' }}>{eg.competency}</div>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                                        {eg.observations.map((obs, oi) => (
+                                                            <div key={oi} style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                                                                <span style={{ color: 'var(--text-secondary)', fontSize: '8px', marginTop: '4px' }}>●</span>
+                                                                {obs}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         )}
                     </div>
                 </div>
