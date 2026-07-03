@@ -62,5 +62,13 @@ sample.mp4
 backend/sample.mp
 
 # Local test utilities
-
 run_mock.py
+backend/test.wav
+backend/test_whisper.py
+latency_logs.txt
+rewrite_consumer.py
+test.wav
+test_latency.py
+test_overlap.py
+test_whisper.py
+backend/app/ml/stream/rtmp_consumer_overlap.py
