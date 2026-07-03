@@ -26,7 +26,7 @@ def clean_audio(
         return audio_array
     audio_array = _reduce_noise(audio_array, sample_rate)
     audio_array = _trim_silence(audio_array)
-    audio_array = _normalize(audio_array)
+    # Peak normalization removed as it amplifies background noise on quiet segments
     logger.info(f"audio cleaner returned: output length={len(audio_array)}")
     return audio_array
 

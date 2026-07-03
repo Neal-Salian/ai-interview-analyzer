@@ -15,10 +15,14 @@ def _get_model():
             if model is None:
                 import os
                 weights_path = "/app/models/small.pt"
-                logger.info(f"Whisper model path: {weights_path}")
-                if not os.path.exists(weights_path):
-                    raise FileNotFoundError(f"Whisper weights not found at {weights_path}. Automatic download disabled.")
-                model = whisper.load_model("small", download_root="/app/models")  # Phase 4: upgraded from "base" for ~4x accuracy
+                local_weights_path = os.path.expanduser("~/.cache/whisper/small.pt")
+                if os.path.exists(weights_path):
+                    model = whisper.load_model("small", download_root="/app/models")
+                elif os.path.exists(local_weights_path):
+                    logger.info(f"Using local Whisper model path: {local_weights_path}")
+                    model = whisper.load_model("small")
+                else:
+                    raise FileNotFoundError(f"Whisper weights not found at {weights_path} or {local_weights_path}. Automatic download disabled.")
                 logger.info("model loaded successfully")
                 logger.info(f"[WHISPER] model loaded from scratch: {id(model)}")
             else:
@@ -61,15 +65,36 @@ def transcribe_chunk(audio_frames: list) -> str:
         logger.info("[WHISPER] transcribe_chunk() exits (empty audio)")
         return ""
 
-    # Normalize (with epsilon to prevent division by zero)
-    audio_array = audio_array / (np.max(np.abs(audio_array)) + 1e-8)
-
     # Phase 4: Pre-processing — noise reduction + normalization + silence trim
     try:
         from app.ml.speech.audio_cleaner import clean_audio
         audio_array = clean_audio(audio_array)
     except Exception as e:
         logger.warning(f"[TRANSCRIBER] audio cleaning failed, using raw: {e}")
+
+    import math
+    
+    # Calculate audio properties
+    sample_rate = 16000
+    channels = 1
+    dtype = str(audio_array.dtype)
+    shape = audio_array.shape
+    duration = len(audio_array) / sample_rate
+    rms = float(np.sqrt(np.mean(audio_array**2)))
+    peak_amplitude = float(np.max(np.abs(audio_array)))
+    whisper_model_name = "small"
+    decode_params = "fp16=False, temperature=0.0, language='en', condition_on_previous_text=False"
+
+    logger.info(f"sample rate: {sample_rate}")
+    logger.info(f"channels: {channels}")
+    logger.info(f"dtype: {dtype}")
+    logger.info(f"shape: {shape}")
+    logger.info(f"duration: {duration:.3f}")
+    logger.info(f"RMS: {rms:.5f}")
+    logger.info(f"peak amplitude: {peak_amplitude:.5f}")
+    logger.info(f"language parameter: en")
+    logger.info(f"Whisper model name: {whisper_model_name}")
+    logger.info(f"decode parameters: {decode_params}")
 
     m = _get_model()
     logger.info(f"[WHISPER] which model instance is used: {id(m)}")
