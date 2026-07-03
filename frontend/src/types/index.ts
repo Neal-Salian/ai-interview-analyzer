@@ -40,8 +40,24 @@ export interface MetricResult {
     signals_used: string[]
 }
 
+// Live competency evidence tracking — progressive display during interview
+export interface LiveCompetencyItem {
+    competency_key: string
+    display_name: string
+    evidence_count: number
+    confidence: 'Low' | 'Medium' | 'High'
+    status: 'Collecting' | 'Building' | 'Ready'
+    question_ids: string[]
+    latest_observations: string[]
+}
+
+export interface LiveEvidenceGroup {
+    competency: string
+    observations: string[]
+}
+
 export interface WSMessage {
-    type: 'history' | 'emotion' | 'transcript' | 'question' | 'metric_update' | 'ping' | 'attention' | 'integrity_alert' | 'sentiment' | 'enrollment_status' | 'tracking_status'
+    type: 'history' | 'emotion' | 'transcript' | 'question' | 'metric_update' | 'ping' | 'attention' | 'integrity_alert' | 'sentiment' | 'enrollment_status' | 'tracking_status' | 'live_competency'
     // history
     emotions?: EmotionFrame[]
     transcripts?: TranscriptChunk[]
@@ -65,4 +81,7 @@ export interface WSMessage {
     // enrollment / tracking
     status?: string
     reason?: string
+    // live competency evidence tracking
+    competencies?: LiveCompetencyItem[]
+    latest_evidence?: LiveEvidenceGroup[]
 }
