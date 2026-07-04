@@ -23,6 +23,13 @@ from app.ml.tracking.candidate_tracker import (
 
 logger = logging.getLogger(__name__)
 
+import os
+DEBUG_TRANSCRIPT_PIPELINE = os.getenv("DEBUG_TRANSCRIPT_PIPELINE", "True").lower() in ("true", "1")
+DEBUG_PCM_DIR = "/tmp/transcript_debug"
+if DEBUG_TRANSCRIPT_PIPELINE:
+    os.makedirs(DEBUG_PCM_DIR, exist_ok=True)
+
+
 # How many transcript chunks to skip between LLM calls.
 # 0 = call after every chunk (good for testing)
 # 2 = call every 3rd chunk (lighter on CPU during long interviews)
@@ -56,6 +63,7 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
         audio_buffer = []
         transcript_chunk_count = 0
         integrity_state = {}  # Phase 3: persistent state for liveness tracking
+        last_chunk_flush_time = time.time()
 
 
         # ── Candidate tracking state (local to consumer) ─────────────
@@ -364,6 +372,19 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                     if frames_to_process:
                         f = frames_to_process[0]
                         duration = sum(fr.samples for fr in frames_to_process) / f.sample_rate if f.sample_rate else 0
+                        
+                        now_flush = time.time()
+                        time_since_last_flush = now_flush - last_chunk_flush_time
+                        last_chunk_flush_time = now_flush
+                        
+                        if DEBUG_TRANSCRIPT_PIPELINE:
+                            logger.info(f"[DEBUG_TRANSCRIPT] --- CHUNK BOUNDARY ---")
+                            logger.info(f"[DEBUG_TRANSCRIPT] Chunk duration: {duration:.3f}s")
+                            logger.info(f"[DEBUG_TRANSCRIPT] Number of packets: {len(frames_to_process)}")
+                            logger.info(f"[DEBUG_TRANSCRIPT] Sample rate: {f.sample_rate}")
+                            logger.info(f"[DEBUG_TRANSCRIPT] Channels: {len(f.layout.channels) if f.layout else 'unknown'}")
+                            logger.info(f"[DEBUG_TRANSCRIPT] Time since last flush: {time_since_last_flush:.3f}s")
+                            
                         logger.info(f"[RTMP] audio packets received: {len(frames_to_process)}")
                         logger.info(f"[RTMP] sample rate: {f.sample_rate}")
                         logger.info(f"[RTMP] channels: {len(f.layout.channels) if f.layout else 'unknown'}")
@@ -378,7 +399,13 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                             transcript = await asyncio.to_thread(
                                 transcribe_chunk, frames_to_process
                             )
-                            logger.info(f"[TIMING] whisper inference took {(time.time() - whisper_start)*1000:.1f}ms")
+                            inference_time = time.time() - whisper_start
+                            
+                            if DEBUG_TRANSCRIPT_PIPELINE:
+                                logger.info(f"[DEBUG_TRANSCRIPT] Whisper processing time: {inference_time:.3f}s")
+                                logger.info(f"[DEBUG_TRANSCRIPT] Final transcript string returned: '{transcript}'")
+                                
+                            logger.info(f"[TIMING] whisper inference took {inference_time*1000:.1f}ms")
                             logger.info("transcription produced")
                             break
                         except asyncio.CancelledError:
@@ -416,8 +443,12 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                             logger.warning(f"[VOCAB CORRECTION] {e}")
 
                     if not transcript or not transcript.strip():
+                        if DEBUG_TRANSCRIPT_PIPELINE:
+                            logger.info("[DEBUG_TRANSCRIPT] Transcript was empty or stripped to empty. Skipping downstream.")
                         continue
 
+                    if DEBUG_TRANSCRIPT_PIPELINE:
+                        logger.info(f"[DEBUG_TRANSCRIPT] Saving to DB: '{transcript}'")
                     await asyncio.to_thread(save_transcript, session_id, transcript)
                     logger.info("transcript stored")
 
@@ -434,6 +465,8 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                     except Exception as e:
                         logger.warning(f"[SENTIMENT ERROR] {e}")
 
+                    if DEBUG_TRANSCRIPT_PIPELINE:
+                        logger.info(f"[DEBUG_TRANSCRIPT] Broadcasting to Websocket: '{transcript}'")
                     await broadcast(session_id, {
                         "type": "transcript",
                         "text": transcript,
