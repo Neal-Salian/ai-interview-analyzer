@@ -70,6 +70,7 @@ def _call_llm(prompt: str, max_tokens: int = 3000) -> str:
                 f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/generate",
                 json={
                     "model": settings.OLLAMA_MODEL,
+                    "keep_alive": settings.OLLAMA_KEEP_ALIVE,
                     "prompt": prompt,
                     "stream": False,
                     "options": {

@@ -43,6 +43,7 @@ Respond ONLY with a JSON object. No markdown, no backticks, no explanation. Just
                 f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/generate",
                 json={
                     "model": settings.OLLAMA_MODEL,
+                    "keep_alive": settings.OLLAMA_KEEP_ALIVE,
                     "prompt": prompt,
                     "stream": False,
                     "options": {

@@ -3,7 +3,7 @@ Explanation engine — calls Ollama to generate human-readable explanations.
 
 Reuses the same Ollama integration pattern as question_generator.py:
 - Same OLLAMA_URL (localhost:11434)
-- Same OLLAMA_MODEL (llama3.1:8b)
+- Same OLLAMA_MODEL (llama3.2:3b)
 - Same JSON stripping logic
 - Same timeout and error handling
 
@@ -36,6 +36,7 @@ async def generate_explanation(prompt: str) -> str:
                 f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/generate",
                 json={
                     "model": settings.OLLAMA_MODEL,
+                    "keep_alive": settings.OLLAMA_KEEP_ALIVE,
                     "prompt": prompt,
                     "stream": False,
                     "options": {

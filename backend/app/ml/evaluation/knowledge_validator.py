@@ -43,6 +43,7 @@ Analyze the transcript and respond ONLY with a JSON object. No markdown formatti
                 f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/generate",
                 json={
                     "model": settings.OLLAMA_MODEL,
+                    "keep_alive": settings.OLLAMA_KEEP_ALIVE,
                     "prompt": prompt,
                     "stream": False,
                     "options": {
