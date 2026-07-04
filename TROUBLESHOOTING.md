@@ -74,7 +74,7 @@ ollama logs
 
 **Common Causes**:
 - Ollama not installed or not started: `ollama serve`
-- Model not pulled: `ollama pull llama3.1:8b` (Ensure `OLLAMA_MODEL` in `.env` matches the pulled model exactly)
+- Model not pulled: `ollama pull llama3.2:3b` (Ensure `OLLAMA_MODEL` in `.env` matches the pulled model exactly)
 - Port conflict: another service on port 11434
 - GPU out of memory: check `nvidia-smi` or reduce model size
 - Docker networking issue: The backend container cannot reach `localhost:11434` on the host unless configured properly.
