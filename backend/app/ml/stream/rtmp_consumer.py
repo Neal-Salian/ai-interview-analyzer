@@ -421,6 +421,7 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                     await asyncio.to_thread(save_transcript, session_id, transcript)
                     logger.info("transcript stored")
 
+
                     try:
                         sentiment = await asyncio.to_thread(
                             score_sentiment, transcript
@@ -462,7 +463,8 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                             from app.core.registry import add_tier2_task
                             add_tier2_task(session_id, task)
                         except Exception as e:
-                            pass
+                            logger.warning(f"[CONSUMER] Failed to add tier 2 task for session {session_id}: {e}")
+
 
                     try:
                         from app.ml.integrity.voice_detector import detect_voice_anomaly
@@ -489,7 +491,8 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                     except ImportError:
                         pass
                     except Exception as e:
-                        pass
+                        logger.warning(f"[VOICE ANOMALY] Failed to process anomaly detection for session {session_id}: {e}")
+
 
         logger.info(f"[CONSUMER] Stream ended for session {session_id}")
     except Exception as e:
