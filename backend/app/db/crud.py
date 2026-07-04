@@ -41,9 +41,9 @@ def save_transcript(session_id: str, text: str):
     finally:
         db.close()
     db = SessionLocal()
-    db = SessionLocal()
     try:
         chunk = TranscriptChunk(
+
             id=uuid.uuid4(),
             session_id=session_id,
             text=text,
