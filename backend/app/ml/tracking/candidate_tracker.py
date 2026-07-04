@@ -236,8 +236,9 @@ def enroll_from_frames(frames: list[np.ndarray]) -> EnrollmentResult:
                 caller_locals = inspect.currentframe().f_back.f_back.f_locals
                 if "session_id" in caller_locals:
                     session_id = caller_locals["session_id"]
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[TRACKER] Failed to extract session_id from caller: {e}")
+
 
             frame_size = f"{frame.shape[1]}x{frame.shape[0]}"
             detector_backend = _deepface_detector
@@ -252,7 +253,8 @@ def enroll_from_frames(frames: list[np.ndarray]) -> EnrollmentResult:
                     enforce_detection=False,
                 )
                 num_detected_faces = len(faces)
-            except Exception:
+            except Exception as e:
+                logger.warning(f"[ENROLLMENT DEBUG] Face extraction failed for frame {i}: {e}")
                 num_detected_faces = -1
                 
             logger.info(
