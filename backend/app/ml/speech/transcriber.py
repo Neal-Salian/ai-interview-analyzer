@@ -84,11 +84,12 @@ def transcribe_chunk(audio_frames: list) -> str:
             logger.warning(f"[DEBUG_TRANSCRIPT] Failed to save PCM: {e}")
 
     # Phase 4: Pre-processing — noise reduction + normalization + silence trim
-    try:
-        from app.ml.speech.audio_cleaner import clean_audio
-        audio_array = clean_audio(audio_array)
-    except Exception as e:
-        logger.warning(f"[TRANSCRIBER] audio cleaning failed, using raw: {e}")
+    # bypassed because it introduces 1.1s latency and trims quiet speech
+    # try:
+    #     from app.ml.speech.audio_cleaner import clean_audio
+    #     audio_array = clean_audio(audio_array)
+    # except Exception as e:
+    #     logger.warning(f"[TRANSCRIBER] audio cleaning failed, using raw: {e}")
 
     import math
     
