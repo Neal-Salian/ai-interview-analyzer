@@ -62,6 +62,7 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
         last_analyzed = 0
         audio_buffer = []
         transcript_chunk_count = 0
+        last_transcript = ""
         integrity_state = {}  # Phase 3: persistent state for liveness tracking
         last_chunk_flush_time = time.time()
 
@@ -365,9 +366,10 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                 except Exception as e:
                     logger.warning(f"[RTMP] Audio decode error: {e}")
 
-                if len(audio_buffer) >= 100:
+                if len(audio_buffer) >= 80:
                     frames_to_process = audio_buffer[:]
-                    audio_buffer = []
+                    # Keep 15 frames (~348ms) of overlap for the next chunk
+                    audio_buffer = audio_buffer[-15:]
 
                     if frames_to_process:
                         f = frames_to_process[0]
@@ -441,6 +443,15 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                                 )
                         except Exception as e:
                             logger.warning(f"[VOCAB CORRECTION] {e}")
+
+                    if transcript:
+                        try:
+                            from app.ml.speech.transcript_cleaner import deduplicate_overlap
+                            transcript = deduplicate_overlap(last_transcript, transcript)
+                            if transcript:
+                                last_transcript = transcript
+                        except Exception as e:
+                            logger.warning(f"[DEDUPLICATION] {e}")
 
                     if not transcript or not transcript.strip():
                         if DEBUG_TRANSCRIPT_PIPELINE:
