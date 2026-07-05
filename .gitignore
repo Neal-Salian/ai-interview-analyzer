@@ -93,3 +93,8 @@ backend/test_chunk_sizes.py
 backend/test_dedup.py
 backend/test_profile_latency.py
 backend/test_streaming_transcription.py
+
+backend/mock_interview_runner.py
+backend/run_mock2.py
+backend/test_stream.py
+backend/trace.py
