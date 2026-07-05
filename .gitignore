@@ -85,3 +85,11 @@ backend/audit_async_db.py
 backend/scratch_audit.py
 backend/scratch_test_leak.py
 backend/scratch_test_leak_*.py
+
+
+backend/test.aac
+backend/test_aac.py
+backend/test_chunk_sizes.py
+backend/test_dedup.py
+backend/test_profile_latency.py
+backend/test_streaming_transcription.py
