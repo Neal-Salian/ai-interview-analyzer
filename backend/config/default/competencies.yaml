@@ -1,0 +1,87 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Competency Definitions — Enterprise Competency Framework
+# ──────────────────────────────────────────────────────────────────────────────
+#
+# Defines the sub-dimensions that each competency metric evaluates.
+# Plugins use these definitions to know which dimensions to score.
+#
+# Companies can define entirely new competencies by creating
+# config/<company_id>/competencies.yaml without modifying the platform.
+#
+# The platform never knows what a company's competencies are.
+# The platform simply executes plugins and aggregates results.
+# ──────────────────────────────────────────────────────────────────────────────
+
+competencies:
+  communication:
+    description: "Evaluates the candidate's communication effectiveness"
+    sub_dimensions:
+      - clarity
+      - articulation
+      - structure
+      - persuasion
+      - listening
+      - speaking_confidence
+
+  leadership:
+    description: "Evaluates the candidate's leadership competencies"
+    sub_dimensions:
+      - delegation
+      - ownership
+      - mentoring
+      - accountability
+      - decision_making
+
+  teamwork:
+    description: "Evaluates the candidate's collaborative abilities"
+    sub_dimensions:
+      - collaboration
+      - empathy
+      - conflict_resolution
+      - knowledge_sharing
+
+  adaptability:
+    description: "Evaluates the candidate's ability to handle change"
+    sub_dimensions:
+      - learning_speed
+      - handling_change
+      - problem_solving_under_uncertainty
+      - flexibility
+
+  confidence:
+    description: "Evaluates the candidate's interview confidence"
+    sub_dimensions:
+      - speaking_confidence
+      - response_certainty
+      - hesitation_management
+      - assertiveness
+
+  engagement:
+    description: "Evaluates the candidate's interview engagement"
+    sub_dimensions:
+      - active_participation
+      - question_depth
+      - attentiveness
+      - enthusiasm
+
+  emotional_stability:
+    description: "Evaluates emotional consistency during the interview"
+    sub_dimensions:
+      - emotional_range
+      - emotional_consistency
+      - composure
+      - recovery
+
+  stress_indicators:
+    description: "Evaluates stress-related behavioural patterns"
+    sub_dimensions:
+      - verbal_stress_markers
+      - emotional_stress_patterns
+      - composure_under_pressure
+
+  attention:
+    description: "Evaluates visual attention and engagement"
+    sub_dimensions:
+      - gaze_consistency
+      - focus_duration
+      - distraction_frequency

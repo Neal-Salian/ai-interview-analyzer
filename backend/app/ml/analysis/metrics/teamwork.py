@@ -1,24 +1,28 @@
 """
-Teamwork metric plugin.
+Teamwork metric plugin — Enterprise Competency Framework.
 
 Detects teamwork and collaboration indicators from transcript content.
 
-Signals:
-  - Collaboration keyword frequency
-  - Team-oriented framing (we vs I ratio)
-  - Conflict resolution language
-  - Empathy and support indicators
+V3.0: Evidence-first evaluation. When structured evidence is available
+(from the preprocessing pipeline), the plugin scores pre-extracted
+teamwork behaviours (e.g., collaboration, conflict resolution).
+Falls back to keyword-based analysis when evidence is unavailable.
 
 v2.0: Confidence-weighted scoring with keyword-density confidence,
       minimum word-count guards, and per-signal confidence breakdown.
 """
 
-from app.ml.analysis.interfaces import MetricResult, SessionContext
+from app.ml.analysis.interfaces import (
+    MetricResult,
+    EnhancedMetricResult,
+    SessionContext,
+)
 from app.ml.analysis.scoring_utils import (
     confidence_weighted_average,
     sample_size_confidence,
     keyword_density_confidence,
     score_to_level,
+    evidence_based_confidence,
     SignalComponent,
 )
 from app.ml.analysis.registry import register_metric
@@ -30,7 +34,11 @@ class TeamworkMetric:
         "Detects collaboration and teamwork indicators from the candidate's "
         "language, including team-oriented framing and interpersonal skills."
     )
-    version = "2.0"
+    version = "3.0"
+    author = "Platform Team"
+    supported_engine = 2
+    requires = {"behaviour_evidence": 1}
+    plugin_metadata = {"category": "competency", "tier": "core"}
 
     COLLABORATION_KEYWORDS = [
         "team", "together", "collaborate", "collaborated", "partnership",
@@ -56,10 +64,96 @@ class TeamworkMetric:
     IDEAL_TRANSCRIPT_WORDS = 300
 
     def compute(self, ctx: SessionContext) -> MetricResult:
+        # ── Try evidence-based evaluation first ───────────────────────────
+        evidence = getattr(ctx, "evidence", None)
+        if evidence and not evidence.is_empty():
+            rel_types = ["collaboration", "teamwork", "conflict_resolution", "empathy"]
+            behaviours = []
+            for t in rel_types:
+                behaviours.extend(evidence.get_behaviours_by_type(t))
+            
+            if behaviours:
+                return self._evidence_based_compute(ctx, evidence, behaviours)
+
+        # ── Fallback: keyword-based evaluation (V2 logic) ────────────────
+        return self._keyword_based_compute(ctx)
+
+    def _evidence_based_compute(
+        self, ctx: SessionContext, evidence, behaviours
+    ) -> EnhancedMetricResult:
+        """Score teamwork using pre-extracted behaviour evidence."""
+        components: list[SignalComponent] = []
+        sub_dimensions: list[dict] = []
+        evidence_ids: list[str] = []
+        transcript_refs: list[str] = []
+
+        avg_confidence = sum(b.confidence for b in behaviours) / len(behaviours)
+        base_score = min(int(len(behaviours) * 20 + avg_confidence * 20), 100)
+
+        components.append(SignalComponent(
+            score=max(0, min(100, base_score)),
+            confidence=avg_confidence,
+            signal_name="teamwork_behaviours",
+        ))
+
+        # Track evidence
+        for b in behaviours:
+            evidence_ids.append(b.id)
+            if b.transcript_reference:
+                transcript_refs.append(b.transcript_reference)
+
+        # ── Aggregate ─────────────────────────────────────────────────────
+        result = confidence_weighted_average(components)
+        signals = [c["signal_name"] for c in components]
+
+        types_found = set(b.behaviour_type for b in behaviours)
+        reasoning_parts = [
+            f"Observed collaborative behaviours: {', '.join(types_found)}."
+        ]
+        
+        recommendations = []
+        if result["final_score"] >= 70:
+            recommendations.append(
+                "Strong collaborative orientation. Likely a good fit for highly cross-functional teams."
+            )
+        else:
+            recommendations.append(
+                "Limited collaboration indicators. Assess interpersonal dynamics in follow-up."
+            )
+
+        return EnhancedMetricResult(
+            name=self.name,
+            score=result["final_score"],
+            raw_score=result["raw_score"],
+            level=score_to_level(result["final_score"]),
+            confidence=result["overall_confidence"],
+            confidence_details=result["confidence_details"],
+            evidence=[{"source": "evidence_pipeline", "count": len(behaviours)}],
+            explanation=(
+                f"Teamwork assessed using {len(components)} signal(s): "
+                f"{', '.join(signals)}."
+            ),
+            signals_used=signals,
+            summary=(
+                f"Interview evidence suggests "
+                f"{'strong' if result['final_score'] >= 70 else 'moderate'} "
+                f"collaboration and teamwork skills."
+            ),
+            reasoning=" ".join(reasoning_parts),
+            recommendations=recommendations,
+            transcript_references=transcript_refs[:5],
+            evidence_ids=evidence_ids,
+            sub_dimensions=sub_dimensions,
+            metadata=self.plugin_metadata,
+        )
+
+    def _keyword_based_compute(self, ctx: SessionContext) -> MetricResult:
+        """V2 keyword-based fallback logic."""
         components: list[SignalComponent] = []
         evidence: list[dict] = []
 
-        if not ctx.full_transcript or not ctx.full_transcript.strip():
+        transcript = getattr(ctx, "candidate_transcript", "") or ctx.full_transcript
+        if not transcript or not transcript.strip():
             return MetricResult(
                 name=self.name,
                 score=0,
@@ -72,14 +166,12 @@ class TeamworkMetric:
                 signals_used=[],
             )
 
-        text_lower = ctx.full_transcript.lower()
+        text_lower = transcript.lower()
         words = text_lower.split()
         word_count = max(len(words), 1)
 
         # ── Signal 1: Collaboration keywords ─────────────────────────────
-        collab_hits = sum(
-            text_lower.count(kw) for kw in self.COLLABORATION_KEYWORDS
-        )
+        collab_hits = sum(text_lower.count(kw) for kw in self.COLLABORATION_KEYWORDS)
         sig_confidence = keyword_density_confidence(
             hits=collab_hits,
             word_count=word_count,
@@ -104,7 +196,6 @@ class TeamworkMetric:
                 })
 
         # ── Signal 2: We vs I ratio ──────────────────────────────────────
-        # Require minimum word count for pronoun analysis to be meaningful
         pronoun_confidence = sample_size_confidence(
             word_count, self.MIN_TRANSCRIPT_WORDS, self.IDEAL_TRANSCRIPT_WORDS
         )
@@ -115,13 +206,11 @@ class TeamworkMetric:
 
             if total_pronouns > 0:
                 we_ratio = we_count / total_pronouns
-                # Higher "we" ratio = more team-oriented
                 if we_ratio >= 0.3:
                     pronoun_score = int(min(we_ratio * 120, 100))
                 else:
                     pronoun_score = int(we_ratio * 200)
 
-                # Confidence also scales with total pronoun count
                 pronoun_sig_confidence = min(
                     pronoun_confidence,
                     sample_size_confidence(total_pronouns, 5, 20),
@@ -135,15 +224,13 @@ class TeamworkMetric:
 
                     if we_ratio > 0.4:
                         evidence.append({
-                            "quote": f'Used "we/our/us" {we_count} times vs "I/my/me" {i_count} times (team-oriented framing)',
+                            "quote": f'Used "we/our/us" {we_count} times vs "I/my/me" {i_count} times',
                             "timestamp": "",
                             "source": "transcript_analysis",
                         })
 
         # ── Signal 3: Conflict resolution language ───────────────────────
-        conflict_hits = sum(
-            text_lower.count(kw) for kw in self.CONFLICT_RESOLUTION_KEYWORDS
-        )
+        conflict_hits = sum(text_lower.count(kw) for kw in self.CONFLICT_RESOLUTION_KEYWORDS)
         sig_confidence = keyword_density_confidence(
             hits=conflict_hits,
             word_count=word_count,
@@ -161,9 +248,7 @@ class TeamworkMetric:
             ))
 
         # ── Signal 4: Empathy indicators ─────────────────────────────────
-        empathy_hits = sum(
-            text_lower.count(kw) for kw in self.EMPATHY_KEYWORDS
-        )
+        empathy_hits = sum(text_lower.count(kw) for kw in self.EMPATHY_KEYWORDS)
         sig_confidence = keyword_density_confidence(
             hits=empathy_hits,
             word_count=word_count,

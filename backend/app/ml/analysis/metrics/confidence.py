@@ -1,17 +1,25 @@
 """
-Confidence metric plugin.
+Confidence metric plugin — Enterprise Competency Framework.
 
 Assesses candidate confidence based on:
   - Emotion stability (fewer negative spikes)
   - Filler word frequency in transcript
   - Gaze steadiness (when attention data is available)
-  - Voice steadiness indicators from emotion confidence variance
+  - Structured communication evidence (speaking confidence, hesitation management)
+
+V3.0: Evidence-first evaluation. Integrates structured evidence (from the
+preprocessing pipeline) with physiological signals (emotions, attention).
+Falls back to pure keyword/physiological analysis when evidence is unavailable.
 
 v2.0: Confidence-weighted scoring with sample-size guards, outlier
       filtering, and per-signal confidence breakdown.
 """
 
-from app.ml.analysis.interfaces import MetricResult, SessionContext
+from app.ml.analysis.interfaces import (
+    MetricResult,
+    EnhancedMetricResult,
+    SessionContext,
+)
 from app.ml.analysis.scoring_utils import (
     confidence_weighted_average,
     sample_size_confidence,
@@ -19,6 +27,7 @@ from app.ml.analysis.scoring_utils import (
     remove_outliers_iqr,
     ema_smooth,
     score_to_level,
+    evidence_based_confidence,
     SignalComponent,
 )
 from app.ml.analysis.registry import register_metric
@@ -28,9 +37,13 @@ class ConfidenceMetric:
     name = "Confidence"
     description = (
         "Assesses candidate confidence based on vocal steadiness, "
-        "emotion stability, and gaze patterns."
+        "emotion stability, gaze patterns, and speaking confidence."
     )
-    version = "2.0"
+    version = "3.0"
+    author = "Platform Team"
+    supported_engine = 2
+    requires = {"communication_evidence": 1}
+    plugin_metadata = {"category": "competency", "tier": "core"}
 
     # Filler words commonly misheard or actually spoken
     FILLERS = [
@@ -49,10 +62,101 @@ class ConfidenceMetric:
     IDEAL_VARIANCE_FRAMES = 40
 
     def compute(self, ctx: SessionContext) -> MetricResult:
-        components: list[SignalComponent] = []
-        evidence: list[dict] = []
+        # ── Try evidence-based evaluation first ───────────────────────────
+        evidence = getattr(ctx, "evidence", None)
+        if evidence and not evidence.is_empty():
+            comm_evidence = evidence.get_communication_by_dimension("speaking_confidence")
+            if comm_evidence:
+                return self._evidence_based_compute(ctx, comm_evidence)
 
-        # ── Signal 1: Emotion stability ──────────────────────────────────
+        # ── Fallback: keyword-based evaluation (V2 logic) ────────────────
+        return self._keyword_based_compute(ctx)
+
+    def _evidence_based_compute(
+        self, ctx: SessionContext, comm_evidence
+    ) -> EnhancedMetricResult:
+        """Score confidence using pre-extracted communication evidence combined with raw signals."""
+        components: list[SignalComponent] = []
+        sub_dimensions: list[dict] = []
+        evidence_ids: list[str] = []
+        transcript_refs: list[str] = []
+
+        # 1. Speaking Confidence (from LLM extraction)
+        avg_confidence = sum(e.confidence for e in comm_evidence) / len(comm_evidence)
+        base_score = int(avg_confidence * 80 + 20)
+        
+        components.append(SignalComponent(
+            score=max(0, min(100, base_score)),
+            confidence=avg_confidence,
+            signal_name="speaking_confidence",
+        ))
+
+        for e in comm_evidence:
+            evidence_ids.append(e.id)
+            if e.transcript_reference:
+                transcript_refs.append(e.transcript_reference)
+
+        # 2. Add physiological signals if available
+        phys_components, phys_evidence = self._get_physiological_signals(ctx)
+        components.extend(phys_components)
+
+        # ── Aggregate ─────────────────────────────────────────────────────
+        result = confidence_weighted_average(components)
+        signals = [c["signal_name"] for c in components]
+
+        reasoning_parts = []
+        if phys_components:
+            reasoning_parts.append(
+                f"Combined verbal delivery analysis with physiological signals "
+                f"({len(phys_components)} sensor metrics used)."
+            )
+        else:
+            reasoning_parts.append(
+                "Assessed based on transcript-level verbal delivery (physiological data unavailable)."
+            )
+        
+        recommendations = []
+        if result["final_score"] >= 70:
+            recommendations.append(
+                "Strong confident presence. Ensure role provides sufficient autonomy and leadership opportunities."
+            )
+        else:
+            recommendations.append(
+                "May benefit from supportive environments. Assess if role requires high-pressure client interactions."
+            )
+
+        return EnhancedMetricResult(
+            name=self.name,
+            score=result["final_score"],
+            raw_score=result["raw_score"],
+            level=score_to_level(result["final_score"]),
+            confidence=result["overall_confidence"],
+            confidence_details=result["confidence_details"],
+            evidence=[{"source": "evidence_pipeline", "count": len(comm_evidence)}] + phys_evidence,
+            explanation=(
+                f"Confidence assessed using {len(components)} signal(s): "
+                f"{', '.join(signals)}."
+            ),
+            signals_used=signals,
+            summary=(
+                f"Interview evidence suggests "
+                f"{'strong' if result['final_score'] >= 70 else 'moderate'} "
+                f"interview confidence."
+            ),
+            reasoning=" ".join(reasoning_parts),
+            recommendations=recommendations,
+            transcript_references=transcript_refs[:5],
+            evidence_ids=evidence_ids,
+            sub_dimensions=sub_dimensions,
+            metadata=self.plugin_metadata,
+        )
+
+    def _get_physiological_signals(self, ctx: SessionContext) -> tuple[list[SignalComponent], list[dict]]:
+        """Extract emotion and attention signals (used in both V2 and V3)."""
+        components = []
+        evidence = []
+
+        # ── Signal: Emotion stability ──────────────────────────────────
         if ctx.emotions:
             n = len(ctx.emotions)
             sig_confidence = sample_size_confidence(
@@ -80,51 +184,7 @@ class ConfidenceMetric:
                         "source": "emotion_detection",
                     })
 
-        # ── Signal 2: Filler word frequency ──────────────────────────────
-        if ctx.full_transcript:
-            text_lower = ctx.full_transcript.lower()
-            words = text_lower.split()
-            word_count = max(len(words), 1)
-
-            sig_confidence = keyword_density_confidence(
-                hits=0,  # we'll compute below
-                word_count=word_count,
-                min_words=self.MIN_TRANSCRIPT_WORDS,
-                ideal_words=self.IDEAL_TRANSCRIPT_WORDS,
-            )
-            if sig_confidence > 0:
-                filler_count = sum(
-                    text_lower.count(filler) for filler in self.FILLERS
-                )
-                filler_ratio = filler_count / word_count
-
-                # Recompute with actual hits for proper confidence
-                sig_confidence = keyword_density_confidence(
-                    hits=max(filler_count, 1),  # at least 1 to get length-based confidence
-                    word_count=word_count,
-                    min_words=self.MIN_TRANSCRIPT_WORDS,
-                    ideal_words=self.IDEAL_TRANSCRIPT_WORDS,
-                )
-
-                # Low filler ratio = high confidence
-                # 0% fillers → 100, 5%+ fillers → ~0
-                filler_score = int(max(0, (1.0 - filler_ratio * 20)) * 100)
-                filler_score = max(0, min(100, filler_score))
-
-                components.append(SignalComponent(
-                    score=filler_score,
-                    confidence=sig_confidence,
-                    signal_name="filler_word_ratio",
-                ))
-
-                if filler_ratio > 0.03:
-                    evidence.append({
-                        "quote": f"Filler words detected: ~{filler_count} instances in {word_count} words ({filler_ratio:.1%})",
-                        "timestamp": "",
-                        "source": "transcript_analysis",
-                    })
-
-        # ── Signal 3: Gaze steadiness ────────────────────────────────────
+        # ── Signal: Gaze steadiness ────────────────────────────────────
         if ctx.attention_events:
             n = len(ctx.attention_events)
             sig_confidence = sample_size_confidence(
@@ -150,8 +210,49 @@ class ConfidenceMetric:
                         "timestamp": "",
                         "source": "attention_tracking",
                     })
+                    
+        return components, evidence
 
-        # ── Signal 4: Emotion confidence variance ────────────────────────
+    def _keyword_based_compute(self, ctx: SessionContext) -> MetricResult:
+        """V2 keyword-based fallback logic."""
+        components: list[SignalComponent] = []
+        evidence: list[dict] = []
+
+        phys_components, phys_evidence = self._get_physiological_signals(ctx)
+        components.extend(phys_components)
+        evidence.extend(phys_evidence)
+
+        # ── Signal: Filler word frequency ──────────────────────────────
+        if ctx.candidate_transcript:
+            text_lower = ctx.candidate_transcript.lower()
+            words = text_lower.split()
+            word_count = max(len(words), 1)
+
+            filler_count = sum(text_lower.count(filler) for filler in self.FILLERS)
+            filler_ratio = filler_count / word_count
+
+            sig_confidence = keyword_density_confidence(
+                hits=max(filler_count, 1),
+                word_count=word_count,
+                min_words=self.MIN_TRANSCRIPT_WORDS,
+                ideal_words=self.IDEAL_TRANSCRIPT_WORDS,
+            )
+            if sig_confidence > 0:
+                filler_score = int(max(0, (1.0 - filler_ratio * 20)) * 100)
+                components.append(SignalComponent(
+                    score=max(0, min(100, filler_score)),
+                    confidence=sig_confidence,
+                    signal_name="filler_word_ratio",
+                ))
+
+                if filler_ratio > 0.03:
+                    evidence.append({
+                        "quote": f"Filler words detected: ~{filler_count} instances in {word_count} words ({filler_ratio:.1%})",
+                        "timestamp": "",
+                        "source": "transcript_analysis",
+                    })
+
+        # ── Signal: Emotion confidence variance ────────────────────────
         if ctx.emotions and len(ctx.emotions) >= self.MIN_VARIANCE_FRAMES:
             n = len(ctx.emotions)
             sig_confidence = sample_size_confidence(
@@ -159,16 +260,12 @@ class ConfidenceMetric:
             )
 
             raw_confidences = [e.get("confidence", 0) for e in ctx.emotions]
-            # Remove outliers before computing variance
             cleaned = remove_outliers_iqr(raw_confidences)
-            # Smooth to reduce frame-to-frame noise
             smoothed = ema_smooth(cleaned, alpha=0.3)
 
             if smoothed:
                 avg = sum(smoothed) / len(smoothed)
                 variance = sum((c - avg) ** 2 for c in smoothed) / len(smoothed)
-                # Lower variance = more consistent = more confident
-                # Normalize: variance < 100 is very stable, > 500 is very unstable
                 stability_score = int(max(0, min(100, 100 - (variance / 5))))
 
                 components.append(SignalComponent(

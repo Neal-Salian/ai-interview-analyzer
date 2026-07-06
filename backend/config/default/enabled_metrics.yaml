@@ -1,0 +1,25 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Default Enabled Metrics — Enterprise Competency Framework
+# ──────────────────────────────────────────────────────────────────────────────
+#
+# Controls which metrics are active for interview analysis.
+# Companies can override by creating config/<company_id>/enabled_metrics.yaml.
+#
+# Adding a new metric:
+#   1. Create app/ml/analysis/metrics/your_metric.py
+#   2. Add the metric key below under enabled_metrics
+#
+# Disabling a metric:
+#   Comment it out or remove it from the list below.
+# ──────────────────────────────────────────────────────────────────────────────
+
+enabled_metrics:
+  - confidence
+  - engagement
+  - stress_indicators
+  - attention
+  - communication
+  - emotional_stability
+  - leadership
+  - teamwork
+  - adaptability

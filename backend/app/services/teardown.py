@@ -35,6 +35,17 @@ async def teardown_session(session_id: str, db: DBSession) -> None:
             f"(server restart?), updating DB only"
         )
 
+    # Step 1.5 — Clear in-memory runtime state
+    from app.runtime.manager import RuntimeManager
+    RuntimeManager.clear(session_id)
+
+    # Step 1.6 — Clear live competency tracking state
+    try:
+        from app.ml.analysis.live_competency_tracker import LiveCompetencyTracker
+        LiveCompetencyTracker.clear(session_id)
+    except Exception:
+        pass  # Non-critical — state will be GC'd anyway
+
     # Step 2 — mark the DB record completed
     updated = crud.mark_session_completed(db, session_id)
     if not updated:
@@ -53,9 +64,10 @@ async def teardown_session(session_id: str, db: DBSession) -> None:
     # Builds a SessionContext from all session data, runs all enabled
     # metric plugins, and stores the results in session_summary JSONB.
     try:
-        from app.ml.analysis.aggregator import build_session_context, run_all_metrics
+        from app.ml.analysis.preprocessing import build_enriched_session_context
+        from app.ml.analysis.aggregator import run_all_metrics
 
-        ctx = await asyncio.to_thread(build_session_context, db, session_id)
+        ctx = await build_enriched_session_context(db, session_id)
         metrics_result = await asyncio.to_thread(run_all_metrics, ctx)
         crud.write_session_summary(db, session_id, metrics_result)
         logger.info(

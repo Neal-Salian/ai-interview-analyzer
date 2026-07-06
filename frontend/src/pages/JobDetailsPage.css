@@ -204,3 +204,201 @@
     cursor: pointer;
     font-size: 13px;
 }
+
+/* Metric Cards */
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.metric-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.metric-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--border-hover);
+}
+
+.metric-card--danger {
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+.metric-card--danger .metric-card__value {
+    color: var(--red);
+}
+
+.metric-card__label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.metric-card__value {
+    font-size: 24px;
+    color: var(--text-primary);
+    font-weight: 700;
+}
+
+/* Funnel */
+.job-details-section__subtitle {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-top: 0;
+    margin-bottom: 16px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.funnel-container {
+    display: flex;
+    align-items: center;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    justify-content: space-between;
+    overflow-x: auto;
+}
+
+.funnel-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+}
+
+.funnel-step__count {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--accent);
+    background: rgba(59, 130, 246, 0.1);
+    width: 64px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: 2px solid rgba(59, 130, 246, 0.2);
+}
+
+.funnel-step__label {
+    font-size: 14px;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.funnel-divider {
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.5;
+}
+
+/* Tables */
+.job-table-wrapper {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg);
+}
+
+.job-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+}
+
+.job-table th,
+.job-table td {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.job-table th {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.job-table tr:last-child td {
+    border-bottom: none;
+}
+
+.job-table td {
+    font-size: 14px;
+    color: var(--text-primary);
+    vertical-align: middle;
+}
+
+.table-action-link {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 14px;
+    transition: opacity 0.2s ease;
+}
+
+.table-action-link:hover {
+    opacity: 0.8;
+    text-decoration: underline;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.status-draft {
+    background: rgba(156, 163, 175, 0.1);
+    color: var(--text-secondary);
+    border: 1px solid rgba(156, 163, 175, 0.2);
+}
+
+.status-scheduled {
+    background: rgba(245, 158, 11, 0.1);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.status-active, .status-processing {
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--accent);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.status-completed {
+    background: rgba(16, 185, 129, 0.1);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.status-cancelled, .status-no_show {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--red);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.job-section-header {
+    margin-bottom: 16px;
+}

@@ -35,7 +35,15 @@ def save_emotion(session_id: str, emotion: dict):
 def save_transcript(session_id: str, text: str):
     db = SessionLocal()
     try:
+        count = db.query(TranscriptChunk).filter(TranscriptChunk.session_id == session_id).count()
+        import logging
+        logging.getLogger(__name__).info(f"Transcript storage: session id={session_id}, number of transcript entries={count + 1}")
+    finally:
+        db.close()
+    db = SessionLocal()
+    try:
         chunk = TranscriptChunk(
+
             id=uuid.uuid4(),
             session_id=session_id,
             text=text,

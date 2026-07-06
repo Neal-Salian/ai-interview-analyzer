@@ -14,6 +14,10 @@ class Candidate(Base):
     recruiter_id = Column(UUID(as_uuid=True), ForeignKey("recruiters.id", ondelete="CASCADE"), nullable=True, index=True)
     name = Column(String, nullable=False)
     email = Column(String, unique=True, nullable=False)
+    phone = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
+    status = Column(String, default="Draft")
+    resume_url = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     
     recruiter = relationship("Recruiter", foreign_keys=[recruiter_id])
@@ -55,6 +59,23 @@ class Recruiter(Base):
     sessions = relationship("Session", back_populates="recruiter")
     refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")
+    zoom_token = relationship("RecruiterZoomToken", back_populates="recruiter", uselist=False, cascade="all, delete-orphan")
+
+class RecruiterZoomToken(Base):
+    __tablename__ = "recruiter_zoom_tokens"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    recruiter_id = Column(UUID(as_uuid=True), ForeignKey("recruiters.id", ondelete="CASCADE"), unique=True, index=True, nullable=False)
+    encrypted_access_token = Column(String, nullable=False)
+    encrypted_refresh_token = Column(String, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    zoom_user_id = Column(String, unique=True, index=True, nullable=False)
+    zoom_email = Column(String, nullable=True)
+    token_scope = Column(String, nullable=True)
+    connected_at = Column(DateTime, default=datetime.datetime.utcnow)
+    last_refresh_at = Column(DateTime, nullable=True)
+
+    recruiter = relationship("Recruiter", back_populates="zoom_token")
+
 
 
 class RefreshToken(Base):
@@ -89,7 +110,12 @@ class Session(Base):
     job_id = Column(UUID(as_uuid=True), ForeignKey("jobs.id"), nullable=True)
     recruiter_id = Column(UUID(as_uuid=True), ForeignKey("recruiters.id", ondelete="SET NULL"), nullable=True)
     zoom_meeting_id = Column(String, nullable=True, index=True)
+    meeting_provider = Column(String, nullable=True, default="zoom")
+    zoom_join_url = Column(String, nullable=True)
+    zoom_start_url = Column(String, nullable=True)
+    zoom_password = Column(String, nullable=True)
     status = Column(String, default="active")
+    ai_runtime_status = Column(String, default="not_initialized")
     started_at = Column(DateTime, default=datetime.datetime.utcnow)
     ended_at = Column(DateTime, nullable=True)
     scheduled_at = Column(DateTime, nullable=True)

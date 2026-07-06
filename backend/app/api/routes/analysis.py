@@ -182,7 +182,10 @@ def _get_integrity_events(db: Session, session_id: str) -> list:
             }
             for e in events
         ]
-    except Exception:
+    except Exception as e:
+        logger.warning(
+            f"[analysis] Integrity events query failed for session {session_id}: {e}"
+        )
         return []
 
 

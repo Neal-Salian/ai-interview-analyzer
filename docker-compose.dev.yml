@@ -1,12 +1,20 @@
 # ── Development Overrides ────────────────────────────────────────────────────
 # Usage:  docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 #
-# This file overrides ONLY the frontend service for development.
-# All other services (db, backend, nginx-rtmp) run unchanged from the base file.
+# This file overrides frontend and backend services for development.
+# All other services (db, nginx-rtmp) run unchanged from the base file.
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
+  backend:
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload --reload-dir app"
+    volumes:
+      - ./backend:/app
+
   frontend:
+    image: interview_frontend_dev
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev

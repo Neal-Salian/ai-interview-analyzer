@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     ZOOM_CLIENT_ID: str = ""
     ZOOM_CLIENT_SECRET: str = ""
     ZOOM_WEBHOOK_SECRET: str = ""
+    ZOOM_TOKEN_ENCRYPTION_KEY: str = ""
 
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
@@ -19,6 +20,29 @@ class Settings(BaseSettings):
     EMAIL_FROM: str = "" 
 
     FRONTEND_URL: str = "http://localhost:5173"
+    CORS_ORIGINS: str = "http://localhost:5173"
+    BACKEND_URL: str = "http://localhost:8000"
+    
+    RTMP_SERVER_URL: str = "rtmp://localhost:1935"
+    RTMP_STAT_URL: str = "http://localhost:8080/stat"
+    
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "llama3.2:3b"
+    OLLAMA_KEEP_ALIVE: str = "30s"
+
+    # ── Candidate Attribution ────────────────────────────────────────────
+    ATTRIBUTION_WINDOW_SIZE: int = 15
+    ATTRIBUTION_PREVIOUS_CONTEXT: int = 5
+    ATTRIBUTION_NEXT_CONTEXT: int = 5
+    ATTRIBUTION_MIN_CONFIDENCE: float = 0.4
+    MAX_CONCURRENT_ATTRIBUTION: int = 2
+    ATTRIBUTION_RETRY_TIMEOUT: float = 60.0
+    ATTRIBUTION_RETRY_BACKOFF: float = 0.5
+
+    # ── Candidate Face Tracking ──────────────────────────────────────────
+    TRACKING_ACQUIRE_THRESHOLD: float = 0.75
+    TRACKING_RELEASE_THRESHOLD: float = 0.60
+    ENROLLMENT_TIMEOUT_SECONDS: int = 15
 
     class Config:
         env_file = ".env"

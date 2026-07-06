@@ -1,14 +1,12 @@
 """
-Emotional stability metric plugin.
+Emotional stability metric plugin — Enterprise Competency Framework.
 
 Assesses how emotionally consistent the candidate remains throughout
 the interview.
 
-Signals:
-  - Emotion variance over time
-  - Mood shift frequency (how often dominant emotion changes)
-  - Recovery time after negative emotion spikes
-  - Sustained positive/neutral baseline
+V3.0: Evidence-first evaluation. Integrates structured evidence (from the
+preprocessing pipeline) with physiological signals (emotions).
+Falls back to pure physiological analysis when evidence is unavailable.
 
 v2.0: Confidence-weighted scoring with raised sample-size thresholds,
       EMA smoothing, outlier filtering, and per-signal confidence breakdown.
@@ -16,12 +14,17 @@ v2.0: Confidence-weighted scoring with raised sample-size thresholds,
 
 from collections import Counter
 
-from app.ml.analysis.interfaces import MetricResult, SessionContext
+from app.ml.analysis.interfaces import (
+    MetricResult,
+    EnhancedMetricResult,
+    SessionContext,
+)
 from app.ml.analysis.scoring_utils import (
     confidence_weighted_average,
     sample_size_confidence,
     ema_smooth,
     score_to_level,
+    evidence_based_confidence,
     SignalComponent,
 )
 from app.ml.analysis.registry import register_metric
@@ -34,34 +37,120 @@ class StabilityMetric:
         "throughout the interview, including mood shifts and recovery "
         "from negative emotion spikes."
     )
-    version = "2.0"
+    version = "3.0"
+    author = "Platform Team"
+    supported_engine = 2
+    requires = {"behaviour_evidence": 1}
+    plugin_metadata = {"category": "competency", "tier": "core"}
 
     NEGATIVE_EMOTIONS = {"angry", "fear", "sad", "disgust"}
     POSITIVE_EMOTIONS = {"happy", "surprise"}
 
-    # Minimum data thresholds — raised from v1.0
+    # Minimum data thresholds
     MIN_EMOTION_FRAMES = 10
     IDEAL_EMOTION_FRAMES = 50
 
     def compute(self, ctx: SessionContext) -> MetricResult:
+        # ── Try evidence-based evaluation first ───────────────────────────
+        evidence = getattr(ctx, "evidence", None)
+        if evidence and not evidence.is_empty():
+            rel_types = ["emotional_consistency", "composure", "recovery"]
+            behaviours = []
+            for t in rel_types:
+                behaviours.extend(evidence.get_behaviours_by_type(t))
+            
+            if behaviours:
+                return self._evidence_based_compute(ctx, evidence, behaviours)
+
+        # ── Fallback: keyword-based evaluation (V2 logic) ────────────────
+        return self._keyword_based_compute(ctx)
+
+    def _evidence_based_compute(
+        self, ctx: SessionContext, evidence, behaviours
+    ) -> EnhancedMetricResult:
+        """Score stability using pre-extracted behaviour evidence combined with raw physiological signals."""
         components: list[SignalComponent] = []
-        evidence: list[dict] = []
+        sub_dimensions: list[dict] = []
+        evidence_ids: list[str] = []
+        transcript_refs: list[str] = []
+
+        avg_confidence = sum(b.confidence for b in behaviours) / len(behaviours)
+        base_score = min(int(len(behaviours) * 20 + avg_confidence * 20), 100)
+
+        components.append(SignalComponent(
+            score=max(0, min(100, base_score)),
+            confidence=avg_confidence,
+            signal_name="emotional_consistency_behaviours",
+        ))
+
+        # Track evidence
+        for b in behaviours:
+            evidence_ids.append(b.id)
+            if b.transcript_reference:
+                transcript_refs.append(b.transcript_reference)
+
+        # 2. Add physiological signals if available
+        phys_components, phys_evidence = self._get_physiological_signals(ctx)
+        components.extend(phys_components)
+
+        # ── Aggregate ─────────────────────────────────────────────────────
+        result = confidence_weighted_average(components)
+        signals = [c["signal_name"] for c in components]
+
+        reasoning_parts = []
+        if phys_components:
+            reasoning_parts.append(
+                f"Combined behavioural composure analysis with physiological emotion signals "
+                f"({len(phys_components)} sensor metrics used)."
+            )
+        else:
+            reasoning_parts.append(
+                "Assessed based on transcript-level consistency (physiological data unavailable)."
+            )
+        
+        recommendations = []
+        if result["final_score"] >= 70:
+            recommendations.append(
+                "Demonstrated emotional consistency. Likely to remain steady in unpredictable situations."
+            )
+        else:
+            recommendations.append(
+                "Observed some emotional fluctuation. Ensure role expectations are clearly defined to minimize unexpected stressors."
+            )
+
+        return EnhancedMetricResult(
+            name=self.name,
+            score=result["final_score"],
+            raw_score=result["raw_score"],
+            level=score_to_level(result["final_score"]),
+            confidence=result["overall_confidence"],
+            confidence_details=result["confidence_details"],
+            evidence=[{"source": "evidence_pipeline", "count": len(behaviours)}] + phys_evidence,
+            explanation=(
+                f"Emotional stability assessed using {len(components)} signal(s): "
+                f"{', '.join(signals)}."
+            ),
+            signals_used=signals,
+            summary=(
+                f"Interview evidence suggests "
+                f"{'strong' if result['final_score'] >= 70 else 'moderate'} "
+                f"emotional stability and consistency."
+            ),
+            reasoning=" ".join(reasoning_parts),
+            recommendations=recommendations,
+            transcript_references=transcript_refs[:5],
+            evidence_ids=evidence_ids,
+            sub_dimensions=sub_dimensions,
+            metadata=self.plugin_metadata,
+        )
+
+    def _get_physiological_signals(self, ctx: SessionContext) -> tuple[list[SignalComponent], list[dict]]:
+        """Extract physiological stability signals (used in both V2 and V3)."""
+        components = []
+        evidence = []
 
         if not ctx.emotions or len(ctx.emotions) < self.MIN_EMOTION_FRAMES:
-            return MetricResult(
-                name=self.name,
-                score=0,
-                raw_score=0,
-                level="Unavailable",
-                confidence=0.0,
-                confidence_details=[],
-                evidence=[],
-                explanation=(
-                    f"Insufficient emotion data (need at least "
-                    f"{self.MIN_EMOTION_FRAMES} frames, got {len(ctx.emotions) if ctx.emotions else 0})."
-                ),
-                signals_used=[],
-            )
+            return components, evidence
 
         total = len(ctx.emotions)
         base_confidence = sample_size_confidence(
@@ -69,8 +158,6 @@ class StabilityMetric:
         )
 
         # ── Signal 1: Mood shift frequency ───────────────────────────────
-        # Apply EMA smoothing to emotion sequence to reduce noise
-        # Map emotions to numeric values for smoothing
         emotion_map = {"neutral": 0, "happy": 1, "surprise": 1,
                        "sad": -1, "angry": -2, "fear": -2, "disgust": -1}
         numeric_emotions = [
@@ -79,17 +166,14 @@ class StabilityMetric:
         ]
         smoothed = ema_smooth(numeric_emotions, alpha=0.3)
 
-        # Count shifts on smoothed sequence (threshold crossings)
         shifts = 0
         for i in range(1, len(smoothed)):
-            # A shift occurs when the smoothed value crosses an integer boundary
             prev_category = round(smoothed[i - 1])
             curr_category = round(smoothed[i])
             if prev_category != curr_category:
                 shifts += 1
 
         shift_ratio = shifts / (total - 1) if total > 1 else 0
-        # Lower shift ratio = more stable
         shift_score = int((1 - shift_ratio) * 100)
 
         components.append(SignalComponent(
@@ -136,9 +220,7 @@ class StabilityMetric:
 
         if recovery_times:
             avg_recovery = sum(recovery_times) / len(recovery_times)
-            # 1-2 frames recovery = excellent, 5+ = slow recovery
             recovery_score = int(max(0, 100 - (avg_recovery - 1) * 25))
-            # Recovery confidence scales with number of recovery events observed
             recovery_confidence = min(base_confidence, sample_size_confidence(
                 len(recovery_times), 2, 8
             ))
@@ -156,12 +238,9 @@ class StabilityMetric:
                     "source": "emotion_detection",
                 })
         else:
-            # No recovery events observed — either no negative emotions (good)
-            # or never recovered (bad, but unlikely without recovery data).
-            # Contribute a low-confidence neutral signal.
             if neg_count == 0:
                 components.append(SignalComponent(
-                    score=85,  # no negative emotions is positive
+                    score=85,
                     confidence=base_confidence * 0.3,
                     signal_name="recovery_time",
                 ))
@@ -170,26 +249,44 @@ class StabilityMetric:
         emotion_counts = Counter(
             e.get("dominant_emotion") for e in ctx.emotions
         )
-        most_common_emotion, most_common_count = emotion_counts.most_common(1)[0]
-        dominance_ratio = most_common_count / total
+        if emotion_counts:
+            most_common_emotion, most_common_count = emotion_counts.most_common(1)[0]
+            dominance_ratio = most_common_count / total
 
-        # High dominance of neutral/positive = stable baseline
-        is_positive_baseline = most_common_emotion in (
-            self.POSITIVE_EMOTIONS | {"neutral"}
-        )
-        if is_positive_baseline:
-            baseline_score = int(dominance_ratio * 100)
-        else:
-            # Dominant negative emotion = unstable baseline
-            baseline_score = int((1 - dominance_ratio) * 100)
+            is_positive_baseline = most_common_emotion in (
+                self.POSITIVE_EMOTIONS | {"neutral"}
+            )
+            if is_positive_baseline:
+                baseline_score = int(dominance_ratio * 100)
+            else:
+                baseline_score = int((1 - dominance_ratio) * 100)
 
-        components.append(SignalComponent(
-            score=max(0, min(100, baseline_score)),
-            confidence=base_confidence,
-            signal_name="baseline_consistency",
-        ))
+            components.append(SignalComponent(
+                score=max(0, min(100, baseline_score)),
+                confidence=base_confidence,
+                signal_name="baseline_consistency",
+            ))
+
+        return components, evidence
+
+    def _keyword_based_compute(self, ctx: SessionContext) -> MetricResult:
+        """V2 keyword-based fallback logic."""
+        components, evidence = self._get_physiological_signals(ctx)
 
         # ── Aggregate ────────────────────────────────────────────────────
+        if not components:
+            return MetricResult(
+                name=self.name,
+                score=0,
+                raw_score=0,
+                level="Unavailable",
+                confidence=0.0,
+                confidence_details=[],
+                evidence=[],
+                explanation="Insufficient data to assess stability.",
+                signals_used=[],
+            )
+
         result = confidence_weighted_average(components)
         signals = [c["signal_name"] for c in components]
 

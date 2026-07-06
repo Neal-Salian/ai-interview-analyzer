@@ -1,0 +1,23 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Default Metric Weights — Enterprise Competency Framework
+# ──────────────────────────────────────────────────────────────────────────────
+#
+# Weights determine how much each metric contributes to the overall
+# competency assessment.  Higher weights = more influence on the final score.
+#
+# Companies can override these by creating config/<company_id>/weights.yaml.
+# If no company-specific config exists, these defaults are used.
+#
+# All weights are normalized during aggregation, so they don't need to sum to 1.
+# ──────────────────────────────────────────────────────────────────────────────
+
+weights:
+  communication: 1.0
+  leadership: 1.0
+  teamwork: 1.0
+  adaptability: 1.0
+  confidence: 0.8
+  engagement: 0.8
+  emotional_stability: 0.7
+  stress_indicators: 0.6
+  attention: 0.5

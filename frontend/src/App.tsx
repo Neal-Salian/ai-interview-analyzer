@@ -13,10 +13,14 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import JobsPage from './pages/JobsPage'
 import JobDetailsPage from './pages/JobDetailsPage'
+import CandidatesPage from './pages/CandidatesPage'
+import CandidateDetailsPage from './pages/CandidateDetailsPage'
 
 import UsersPage from './pages/admin/UsersPage'
 import AuditLogsPage from './pages/admin/AuditLogsPage'
-import SettingsPage from './pages/admin/SettingsPage'
+import AdminSettingsPage from './pages/admin/SettingsPage'
+import SettingsPage from './pages/SettingsPage'
+import MockMeetingPage from './pages/MockMeetingPage'
 
 // Inside <Routes> after /login:
 
@@ -42,11 +46,20 @@ export default function App() {
             <Route path="/sessions/:id/report" element={
               <ProtectedRoute><ReportPage /></ProtectedRoute>
             } />
+            <Route path="/candidates" element={
+              <ProtectedRoute><CandidatesPage /></ProtectedRoute>
+            } />
             <Route path="/candidates/new" element={
               <ProtectedRoute><CandidatePage /></ProtectedRoute>
             } />
+            <Route path="/candidates/:id" element={
+              <ProtectedRoute><CandidateDetailsPage /></ProtectedRoute>
+            } />
             <Route path="/history" element={
               <ProtectedRoute><InterviewHistoryPage /></ProtectedRoute>
+            } />
+            <Route path="/settings" element={
+              <ProtectedRoute><SettingsPage /></ProtectedRoute>
             } />
             <Route path="/jobs" element={
               <ProtectedRoute><JobsPage /></ProtectedRoute>
@@ -63,8 +76,20 @@ export default function App() {
               <ProtectedRoute allowedRoles={['ADMIN']}><AuditLogsPage /></ProtectedRoute>
             } />
             <Route path="/admin/settings" element={
-              <ProtectedRoute allowedRoles={['ADMIN']}><SettingsPage /></ProtectedRoute>
+              <ProtectedRoute allowedRoles={['ADMIN']}><AdminSettingsPage /></ProtectedRoute>
             } />
+
+            {/* Development Only */}
+            {import.meta.env.DEV && (
+              <>
+                <Route path="/mock-start/:mockId" element={
+                  <ProtectedRoute><MockMeetingPage /></ProtectedRoute>
+                } />
+                <Route path="/mock-join/:mockId" element={
+                  <ProtectedRoute><MockMeetingPage /></ProtectedRoute>
+                } />
+              </>
+            )}
 
             {/* Default redirect */}
             <Route path="*" element={<Navigate to="/sessions" replace />} />

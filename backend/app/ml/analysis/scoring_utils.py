@@ -210,3 +210,116 @@ def ema_smooth(
 # ── Re-export for convenience ─────────────────────────────────────────────────
 
 from app.ml.analysis.interfaces import score_to_level  # noqa: E402, F401
+
+
+# ── Enterprise Competency Framework: Multi-signal confidence ──────────────────
+
+
+def composite_confidence(
+    evidence_count: int = 0,
+    transcript_word_count: int = 0,
+    star_completeness: float = 0.0,
+    visual_data_quality: float = 0.0,
+    llm_confidence: float = 0.0,
+    weights: dict[str, float] | None = None,
+) -> float:
+    """
+    Compute a composite confidence score from multiple independent signals.
+
+    Instead of relying solely on LLM confidence, this blends:
+      - evidence_count:        how many evidence items support the finding
+      - transcript_word_count: transcript length (more data = higher confidence)
+      - star_completeness:     0.0–1.0 from STAR extraction quality
+      - visual_data_quality:   0.0–1.0 from emotion/attention frame count
+      - llm_confidence:        0.0–1.0 from the LLM extraction itself
+
+    Default weights (can be overridden):
+      evidence:    0.25
+      transcript:  0.20
+      star:        0.20
+      visual:      0.15
+      llm:         0.20
+
+    Returns 0.0–1.0.
+    """
+    default_weights = {
+        "evidence": 0.25,
+        "transcript": 0.20,
+        "star": 0.20,
+        "visual": 0.15,
+        "llm": 0.20,
+    }
+    w = weights or default_weights
+
+    # Evidence count → confidence (diminishing returns above 5 items)
+    evidence_conf = min(evidence_count / 5, 1.0) if evidence_count > 0 else 0.0
+
+    # Transcript length → confidence
+    if transcript_word_count < 50:
+        transcript_conf = 0.0
+    elif transcript_word_count >= 300:
+        transcript_conf = 1.0
+    else:
+        transcript_conf = (transcript_word_count - 50) / 250
+
+    # STAR, visual, and LLM are already 0.0–1.0
+    star_conf = max(0.0, min(1.0, star_completeness))
+    visual_conf = max(0.0, min(1.0, visual_data_quality))
+    llm_conf = max(0.0, min(1.0, llm_confidence))
+
+    # Weighted blend
+    total_weight = sum(w.values())
+    if total_weight <= 0:
+        return 0.0
+
+    blended = (
+        evidence_conf * w.get("evidence", 0)
+        + transcript_conf * w.get("transcript", 0)
+        + star_conf * w.get("star", 0)
+        + visual_conf * w.get("visual", 0)
+        + llm_conf * w.get("llm", 0)
+    ) / total_weight
+
+    return round(max(0.0, min(1.0, blended)), 3)
+
+
+def evidence_based_confidence(
+    evidence_items: list,
+    min_evidence: int = 1,
+    ideal_evidence: int = 5,
+) -> float:
+    """
+    Compute confidence from the quantity and quality of evidence items.
+
+    Combines sample-size gating with average per-item confidence.
+
+    Args:
+        evidence_items: list of evidence objects (must have .confidence attr)
+        min_evidence:   minimum items for non-zero confidence
+        ideal_evidence: items needed for maximum confidence
+
+    Returns 0.0–1.0.
+    """
+    n = len(evidence_items)
+    if n < min_evidence:
+        return 0.0
+
+    # Quantity component
+    quantity_conf = sample_size_confidence(n, min_evidence, ideal_evidence)
+
+    # Quality component (average per-item confidence)
+    avg_quality = 0.0
+    if n > 0:
+        confidences = []
+        for item in evidence_items:
+            if hasattr(item, "confidence"):
+                confidences.append(item.confidence)
+            elif isinstance(item, dict):
+                confidences.append(item.get("confidence", 0.0))
+        if confidences:
+            avg_quality = sum(confidences) / len(confidences)
+
+    # Blend quantity and quality (60/40)
+    blended = quantity_conf * 0.6 + avg_quality * 0.4
+    return round(max(0.0, min(1.0, blended)), 3)
+

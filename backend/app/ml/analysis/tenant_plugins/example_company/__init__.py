@@ -1,0 +1,1 @@
+# Example company tenant plugins

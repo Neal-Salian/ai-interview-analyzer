@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import Navbar from '../components/Navbar'
-import type { EmotionFrame, TranscriptChunk, SuggestedQuestion, WSMessage } from '../types'
+import type { EmotionFrame, TranscriptChunk, SuggestedQuestion, WSMessage, LiveCompetencyItem, LiveEvidenceGroup } from '../types'
 import client from '../api/client'
 import PageTransition from '../components/PageTransition';
 import { SkeletonCard, SkeletonText } from '../components/Skeleton';
+import { useRuntimeStatus } from '../hooks/useRuntimeStatus';
 
 const EMOTION_COLOR: Record<string, string> = {
     happy: '#34d399',
@@ -44,7 +45,29 @@ export default function LiveDashboard() {
     const [currentSentiment, setCurrentSentiment] = useState<string>('—')
     const [integrityAlerts, setIntegrityAlerts] = useState<{event_type: string, severity: string, details: string, timestamp: string}[]>([])
     const [connected, setConnected] = useState(false)
-    const [sessionInfo, setSessionInfo] = useState<{ candidate: string, job: string, status?: string } | null>(null)
+    const [sessionInfo, setSessionInfo] = useState<{ candidate: string, job: string, status?: string, zoom_join_url?: string, meeting_provider?: string, zoom_meeting_id?: string } | null>(null)
+    
+    // Enrollment / Tracking
+    const [enrollmentStatus, setEnrollmentStatus] = useState<'idle' | 'enrolling' | 'failed' | 'success' | 'timeout'>('idle')
+    const [trackingStatus, setTrackingStatus] = useState<'not_enrolled' | 'tracking' | 'lost' | 'reverifying' | 'session_ended'>('not_enrolled')
+    const [enrollmentReason, setEnrollmentReason] = useState<string>('')
+    const [toasts, setToasts] = useState<{id: string, message: string, type: 'info'|'success'|'warning'|'error'}[]>([])
+    const lastToastRef = useRef<Record<string, number>>({})
+
+    // Live Competency Evidence Tracking
+    const [liveCompetencies, setLiveCompetencies] = useState<LiveCompetencyItem[]>([])
+    const [latestEvidence, setLatestEvidence] = useState<LiveEvidenceGroup[]>([])
+
+    const showToast = (message: string, type: 'info'|'success'|'warning'|'error' = 'info') => {
+        const now = Date.now()
+        if (lastToastRef.current[message] && now - lastToastRef.current[message] < 5000) return
+        lastToastRef.current[message] = now
+        const id = Math.random().toString(36).substring(7)
+        setToasts(prev => [...prev, { id, message, type }])
+        setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 5000)
+    }
+
+    const { aiRuntime, aiRuntimeDetails, retryInitialization } = useRuntimeStatus(sessionId, sessionInfo?.status === 'active')
     const transcriptRef = useRef<HTMLDivElement>(null)
     const wsRef = useRef<WebSocket | null>(null)
 
@@ -72,12 +95,27 @@ export default function LiveDashboard() {
                 setSessionInfo({
                     candidate: res.data.candidate || 'Unknown',
                     job: res.data.job || 'No role specified',
-                    status: res.data.status
+                    status: res.data.status,
+                    zoom_join_url: res.data.zoom_join_url,
+                    meeting_provider: res.data.meeting_provider,
+                    zoom_meeting_id: res.data.zoom_meeting_id
                 })
             })
             .catch(err => console.error('Failed to fetch session info', err))
             .finally(() => setLoading(false))
     }, [sessionId])
+
+    const handleRetryInitialization = async () => {
+        await retryInitialization();
+    }
+
+    const handleStartAnalysis = async () => {
+        try {
+            await client.post(`/sessions/${sessionId}/start-analysis`)
+        } catch (e) {
+            console.error('Failed to start analysis', e)
+        }
+    }
 
     // WebSocket
     useEffect(() => {
@@ -128,11 +166,15 @@ export default function LiveDashboard() {
             }
 
             if (msg.type === 'transcript' && msg.text) {
+                console.log("frontend receives transcript");
                 const chunk: TranscriptChunk = {
                     text: msg.text,
                     timestamp: msg.timestamp ?? new Date().toISOString(),
                 }
-                setTranscripts(prev => [...prev, chunk])
+                setTranscripts(prev => {
+                    console.log("frontend appends transcript");
+                    return [...prev, chunk];
+                })
             }
 
             if (msg.type === 'question' && msg.question) {
@@ -159,17 +201,59 @@ export default function LiveDashboard() {
                     timestamp: new Date().toISOString()
                 }].slice(-5)) // Keep last 5
             }
+
+            if (msg.type === 'enrollment_status' && msg.status) {
+                setEnrollmentStatus(msg.status as any)
+                if (msg.reason) setEnrollmentReason(msg.reason)
+                
+                if (msg.status === 'success' || msg.status === 'enrolled') {
+                    showToast('Candidate enrolled successfully.', 'success')
+                    setEnrollmentStatus('idle') // temporary workflow ends
+                } else if (msg.status === 'failed') {
+                    const reasonStr = msg.reason === 'multiple_faces_detected' ? 'Multiple faces detected' : msg.reason
+                    showToast(`Enrollment failed: ${reasonStr}`, 'error')
+                } else if (msg.status === 'timeout') {
+                    showToast('Enrollment timed out.', 'warning')
+                } else if (msg.status === 'enrolling') {
+                    showToast('Enrollment started...', 'info')
+                }
+            }
+
+            if (msg.type === 'live_competency' && msg.competencies) {
+                setLiveCompetencies(msg.competencies)
+                setLatestEvidence(msg.latest_evidence || [])
+            }
+
+            if (msg.type === 'tracking_status' && msg.status) {
+                setTrackingStatus(msg.status as any)
+                
+                if (msg.status === 'lost') {
+                    showToast('Candidate tracking lost.', 'warning')
+                } else if (msg.status === 'tracking') {
+                    showToast('Candidate tracking active.', 'success')
+                }
+            }
         }
 
         return () => ws.close()
     }, [sessionId])
 
+    const autoScrollRef = useRef(true);
+
+    const handleScroll = () => {
+        if (!transcriptRef.current) return;
+        const { scrollTop, scrollHeight, clientHeight } = transcriptRef.current;
+        // Check if user is within 100px of the bottom
+        const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+        autoScrollRef.current = isNearBottom;
+    };
+
     // Auto-scroll transcript
     useEffect(() => {
-        if (transcriptRef.current) {
-            transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight
+        if (transcriptRef.current && autoScrollRef.current) {
+            transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
         }
-    }, [transcripts])
+    }, [transcripts]);
 
     const markAsked = async (id: string) => {
         setQuestions(prev => prev.map(q => q.id === id ? { ...q, was_asked: true } : q))
@@ -265,6 +349,79 @@ export default function LiveDashboard() {
                     </div>
                 </div>
 
+                {sessionInfo?.status === 'scheduled' ? (
+                    <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '64px', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)' }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: '48px', color: 'var(--text-secondary)', marginBottom: '16px' }}>event</span>
+                        <h2 style={{ fontSize: '24px', fontWeight: 600, marginBottom: '8px' }}>Interview has not started.</h2>
+                        <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>Wait for the scheduled time to begin the session.</p>
+                        {sessionInfo.zoom_join_url && (
+                            <a href={sessionInfo.zoom_join_url} target="_blank" rel="noopener noreferrer" style={{ padding: '12px 24px', background: 'linear-gradient(135deg, #2d8cff 0%, #0b5fcc 100%)', color: '#fff', borderRadius: '8px', textDecoration: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span className="material-symbols-outlined">videocam</span>
+                                Join Meeting
+                            </a>
+                        )}
+                    </div>
+                ) : (
+                    <>
+                        {/* Meeting Live & AI Runtime Status Bar */}
+                        <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '16px', marginBottom: '8px' }}>
+                            {sessionInfo?.meeting_provider === 'mock' ? (
+                                <div style={{ flex: 1, padding: '16px', background: 'rgba(245, 158, 11, 0.05)', border: '1px solid rgba(245, 158, 11, 0.2)', borderRadius: 'var(--radius)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#f59e0b', fontWeight: 600, marginBottom: '4px' }}>
+                                        <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>developer_mode</span>
+                                        Development Mode (OBS)
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+                                        <span style={{ color: 'var(--text-secondary)' }}>Server:</span>
+                                        <code style={{ background: 'var(--bg)', padding: '2px 6px', borderRadius: '4px', cursor: 'pointer' }} onClick={() => navigator.clipboard.writeText('rtmp://localhost:1935/stream')}>rtmp://localhost:1935/stream</code>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+                                        <span style={{ color: 'var(--text-secondary)' }}>Stream Key:</span>
+                                        <code style={{ background: 'var(--bg)', padding: '2px 6px', borderRadius: '4px', cursor: 'pointer' }} onClick={() => navigator.clipboard.writeText(sessionInfo.zoom_meeting_id || '')}>{sessionInfo.zoom_meeting_id}</code>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div style={{ flex: 1, padding: '16px', background: 'rgba(45, 140, 255, 0.05)', border: '1px solid rgba(45, 140, 255, 0.2)', borderRadius: 'var(--radius)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <span className="material-symbols-outlined" style={{ color: '#2d8cff', fontSize: '24px' }}>videocam</span>
+                                    <div>
+                                        <div style={{ fontWeight: 600, color: '#2d8cff' }}>Meeting Live</div>
+                                        <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Audio & Video streams connected</div>
+                                    </div>
+                                </div>
+                            )}
+                            
+                            <div style={{ flex: 2, padding: '16px', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    {aiRuntime === 'not_initialized' && <><span className="material-symbols-outlined" style={{ color: 'var(--text-secondary)' }}>power_settings_new</span><div><div style={{ fontWeight: 600 }}>AI Engine Not Initialized</div></div></>}
+                                    {aiRuntime === 'initializing' && <><span className="material-symbols-outlined" style={{ color: '#f59e0b', animation: 'spin 2s linear infinite' }}>sync</span><div><div style={{ fontWeight: 600, color: '#f59e0b' }}>AI Engine Initializing... {aiRuntimeDetails.progress}%</div><div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{aiRuntimeDetails.current_step || 'Loading interview engine...'}</div></div></>}
+                                    {aiRuntime === 'ready' && <><span className="material-symbols-outlined" style={{ color: 'var(--success)' }}>check_circle</span><div><div style={{ fontWeight: 600, color: 'var(--success)' }}>AI Engine Ready {aiRuntimeDetails.duration_ms ? `(${aiRuntimeDetails.duration_ms}ms)` : ''}</div><div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Ready for analysis</div></div></>}
+                                    {aiRuntime === 'starting_rtmp' && <><span className="material-symbols-outlined" style={{ color: '#f59e0b', animation: 'spin 2s linear infinite' }}>stream</span><div><div style={{ fontWeight: 600, color: '#f59e0b' }}>Starting RTMP Stream...</div><div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{aiRuntimeDetails.current_step || 'Connecting to video stream...'}</div></div></>}
+                                    {aiRuntime === 'running' && <><span className="material-symbols-outlined" style={{ color: 'var(--success)' }}>play_circle</span><div><div style={{ fontWeight: 600, color: 'var(--success)' }}>AI Analysis Running</div><div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Live analysis active</div></div></>}
+                                    {aiRuntime === 'failed' && <><span className="material-symbols-outlined" style={{ color: 'var(--danger)' }}>error</span><div><div style={{ fontWeight: 600, color: 'var(--danger)' }}>AI Engine Failed</div><div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{aiRuntimeDetails.current_step || `Failed at component: ${aiRuntimeDetails.failed_component}`}</div></div></>}
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    {aiRuntime === 'failed' && (
+                                        <button onClick={handleRetryInitialization} style={{ padding: '8px 16px', background: 'transparent', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}>
+                                            Retry AI Initialization
+                                        </button>
+                                    )}
+                                    {aiRuntime === 'running' ? (
+                                        <span style={{ padding: '8px 16px', background: 'rgba(52, 211, 153, 0.1)', color: 'var(--success)', border: '1px solid var(--success)', borderRadius: '6px', fontWeight: 500, fontSize: '13px' }}>🟢 AI Analysis Running</span>
+                                    ) : aiRuntime === 'starting_rtmp' ? (
+                                        <span style={{ padding: '8px 16px', background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', border: '1px solid #f59e0b', borderRadius: '6px', fontWeight: 500, fontSize: '13px', animation: 'pulse 2s ease-in-out infinite' }}>⏳ Connecting...</span>
+                                    ) : (
+                                        <button 
+                                            onClick={handleStartAnalysis}
+                                            disabled={aiRuntime !== 'ready'} 
+                                            style={{ padding: '8px 16px', background: aiRuntime === 'ready' ? 'var(--accent)' : 'var(--bg)', color: aiRuntime === 'ready' ? '#fff' : 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: '6px', cursor: aiRuntime === 'ready' ? 'pointer' : 'not-allowed', fontWeight: 500, opacity: aiRuntime === 'ready' ? 1 : 0.6 }}
+                                        >
+                                            Start AI Analysis
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
                 {/* Left column — emotion + chart */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
@@ -273,6 +430,11 @@ export default function LiveDashboard() {
                         <div style={{ fontSize: '14px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', fontWeight: 700, fontFamily: 'var(--font-heading)' }}>
                             Live Vitals
                         </div>
+                        {aiRuntime !== 'running' ? (
+                            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px', background: 'var(--bg)', borderRadius: 'var(--radius)' }}>
+                                Vitals will appear after AI Analysis starts.
+                            </div>
+                        ) : (
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                             <div>
                                 <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Emotion</div>
@@ -296,6 +458,7 @@ export default function LiveDashboard() {
                                 </div>
                             </div>
                         </div>
+                        )}
                     </div>
 
                     {/* Emotion chart */}
@@ -303,7 +466,12 @@ export default function LiveDashboard() {
                         <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px', fontFamily: 'var(--font-heading)' }}>
                             Emotions Over Time
                         </div>
-                        {chartData.length === 0 ? (
+                        {aiRuntime !== 'running' ? (
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1px dashed var(--border)', borderRadius: 'var(--radius)', padding: '2rem', minHeight: '150px', marginTop: '10px' }}>
+                                <span className="material-symbols-outlined" style={{ color: 'var(--text-secondary)', fontSize: '24px', marginBottom: '8px' }}>monitoring</span>
+                                <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Waiting for AI analysis...</span>
+                            </div>
+                        ) : chartData.length === 0 ? (
                             <div style={{
                                 flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                                 border: '1px dashed var(--border)', borderRadius: 'var(--radius)', padding: '2rem', minHeight: '150px', marginTop: '10px'
@@ -331,6 +499,11 @@ export default function LiveDashboard() {
                         <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', fontFamily: 'var(--font-heading)' }}>
                             Suggested Questions
                         </div>
+                        {aiRuntime !== 'running' ? (
+                            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px', background: 'var(--bg)', borderRadius: 'var(--radius)' }}>
+                                Questions will appear after AI Analysis starts.
+                            </div>
+                        ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                             {questions.map(q => (
                                 <div key={q.id} style={{
@@ -369,11 +542,190 @@ export default function LiveDashboard() {
                                 </div>
                             ))}
                         </div>
+                        )}
+                    </div>
+
+                    {/* Live Competency Evidence Tracking */}
+                    <div style={cardStyle}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                            <div style={{ fontSize: '14px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700, fontFamily: 'var(--font-heading)' }}>
+                                Competency Analysis
+                            </div>
+                            {aiRuntime === 'running' && liveCompetencies.length > 0 && (
+                                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--success)', display: 'inline-block', animation: 'pulse 2s ease-in-out infinite' }} />
+                                    Collecting Evidence
+                                </span>
+                            )}
+                        </div>
+                        {aiRuntime !== 'running' ? (
+                            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px', background: 'var(--bg)', borderRadius: 'var(--radius)' }}>
+                                Competency insights will appear after AI Analysis starts.
+                            </div>
+                        ) : liveCompetencies.length === 0 ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1px dashed var(--border)', borderRadius: 'var(--radius)', padding: '2rem', minHeight: '100px' }}>
+                                <span className="material-symbols-outlined" style={{ color: 'var(--text-secondary)', fontSize: '24px', marginBottom: '8px' }}>psychology</span>
+                                <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Waiting for transcript data...</span>
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                {liveCompetencies.map(c => {
+                                    const statusColor = c.status === 'Ready' ? 'var(--success)' : c.status === 'Building' ? '#3b82f6' : '#f59e0b'
+                                    const confidenceColor = c.confidence === 'High' ? 'var(--success)' : c.confidence === 'Medium' ? '#3b82f6' : 'var(--text-secondary)'
+                                    const barPercent = Math.min(c.evidence_count / 5 * 100, 100)
+                                    return (
+                                        <div key={c.competency_key} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '14px', transition: 'all 0.3s ease' }}>
+                                            {/* Competency header */}
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                                                <div style={{ fontWeight: 600, fontSize: '14px' }}>{c.display_name}</div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span style={{
+                                                        fontSize: '11px', fontWeight: 600, padding: '2px 8px',
+                                                        borderRadius: '10px', background: `${statusColor}18`,
+                                                        color: statusColor, border: `1px solid ${statusColor}40`,
+                                                    }}>
+                                                        {c.status === 'Collecting' ? 'Collecting' : c.status === 'Building' ? 'Building Evidence' : 'Ready'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            {/* Evidence progress bar */}
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', minWidth: '55px' }}>Evidence</div>
+                                                <div style={{ flex: 1, height: '6px', background: 'var(--border)', borderRadius: '3px', overflow: 'hidden' }}>
+                                                    <div style={{
+                                                        height: '100%', borderRadius: '3px',
+                                                        width: `${barPercent}%`,
+                                                        background: `linear-gradient(90deg, ${statusColor}, ${statusColor}cc)`,
+                                                        transition: 'width 0.6s ease-out',
+                                                    }} />
+                                                </div>
+                                                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', minWidth: '16px', textAlign: 'right' }}>{c.evidence_count}</span>
+                                            </div>
+                                            {/* Questions and confidence */}
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                                                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginRight: '4px' }}>Questions</span>
+                                                    {c.question_ids.length === 0 ? (
+                                                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontStyle: 'italic' }}>—</span>
+                                                    ) : (
+                                                        c.question_ids.slice(0, 5).map((qId, idx) => (
+                                                            <span key={qId} style={{
+                                                                fontSize: '10px', fontWeight: 600, padding: '1px 6px',
+                                                                borderRadius: '4px', background: 'var(--accent)', color: '#fff',
+                                                                opacity: 0.85,
+                                                            }}>
+                                                                Q{idx + 1}
+                                                            </span>
+                                                        ))
+                                                    )}
+                                                </div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Confidence</span>
+                                                    <span style={{
+                                                        fontSize: '11px', fontWeight: 600, padding: '1px 8px',
+                                                        borderRadius: '10px', color: confidenceColor,
+                                                        background: `${confidenceColor}14`,
+                                                        border: `1px solid ${confidenceColor}30`,
+                                                    }}>
+                                                        {c.confidence}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+
+                                {/* Latest Evidence Panel */}
+                                {latestEvidence.length > 0 && (
+                                    <div style={{ marginTop: '4px', padding: '14px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+                                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px', fontWeight: 700, fontFamily: 'var(--font-heading)' }}>
+                                            Latest Evidence
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                            {latestEvidence.map(eg => (
+                                                <div key={eg.competency}>
+                                                    <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '4px', color: 'var(--accent)' }}>{eg.competency}</div>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                                        {eg.observations.map((obs, oi) => (
+                                                            <div key={oi} style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                                                                <span style={{ color: 'var(--text-secondary)', fontSize: '8px', marginTop: '4px' }}>●</span>
+                                                                {obs}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
 
                 {/* Right column — transcript */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {/* Candidate Tracking Card */}
+                    <div style={cardStyle}>
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', fontFamily: 'var(--font-heading)' }}>
+                            Candidate Tracking
+                        </div>
+                        {aiRuntime !== 'running' ? (
+                            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px', background: 'var(--bg)', borderRadius: 'var(--radius)' }}>
+                                Tracking will be available after AI Analysis starts.
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                {/* Status Indicator */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'var(--bg)', borderRadius: 'var(--radius)' }}>
+                                    {trackingStatus === 'tracking' && <><span style={{ fontSize: '18px' }}>🟢</span><div style={{ fontWeight: 600 }}>Tracking Candidate</div></>}
+                                    {enrollmentStatus === 'enrolling' && <><span style={{ fontSize: '18px' }}>🟡</span><div style={{ fontWeight: 600 }}>Enrolling...</div></>}
+                                    {trackingStatus === 'reverifying' && <><span style={{ fontSize: '18px' }}>🟠</span><div style={{ fontWeight: 600 }}>Re-verifying...</div></>}
+                                    {trackingStatus === 'lost' && <><span style={{ fontSize: '18px' }}>🔴</span><div style={{ fontWeight: 600, color: 'var(--danger)' }}>Candidate Lost</div></>}
+                                    {trackingStatus === 'not_enrolled' && enrollmentStatus !== 'enrolling' && <><span style={{ fontSize: '18px' }}>⚪</span><div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Not Enrolled</div></>}
+                                    
+                                    {/* Sub-status text */}
+                                    <div style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                        {trackingStatus === 'lost' && 'Visual analysis paused.'}
+                                        {trackingStatus === 'tracking' && 'Visual analysis active.'}
+                                    </div>
+                                </div>
+                                
+                                {/* Instructions & Button */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                    {trackingStatus === 'not_enrolled' && enrollmentStatus !== 'enrolling' && (
+                                        <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                                            {enrollmentStatus === 'failed' && enrollmentReason === 'multiple_faces_detected' ? (
+                                                <span style={{ color: '#f59e0b' }}>⚠️ More than one face detected. Please ask interviewers or panel members to temporarily disable their cameras. Then retry enrollment.</span>
+                                            ) : (
+                                                "Ask only the candidate to keep their camera on for a few seconds. When ready, press Enroll Candidate."
+                                            )}
+                                        </div>
+                                    )}
+                                    
+                                    {(trackingStatus === 'not_enrolled' || trackingStatus === 'lost' || enrollmentStatus === 'failed' || enrollmentStatus === 'timeout') && (
+                                        <button 
+                                            onClick={() => {
+                                                if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                                                    wsRef.current.send(JSON.stringify({ type: 'enroll_candidate' }))
+                                                    setEnrollmentStatus('enrolling')
+                                                }
+                                            }}
+                                            disabled={enrollmentStatus === 'enrolling' || aiRuntime !== 'running'}
+                                            style={{
+                                                padding: '10px 16px', background: enrollmentStatus === 'enrolling' ? 'var(--bg)' : 'var(--accent)', 
+                                                color: enrollmentStatus === 'enrolling' ? 'var(--text-secondary)' : '#fff', 
+                                                border: '1px solid var(--border)', borderRadius: '6px', cursor: enrollmentStatus === 'enrolling' ? 'not-allowed' : 'pointer', fontWeight: 500, alignSelf: 'flex-start'
+                                            }}
+                                        >
+                                            {enrollmentStatus === 'failed' || enrollmentStatus === 'timeout' || trackingStatus === 'lost' ? 'Retry Enrollment' : 'Enroll Candidate'}
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
                     {integrityAlerts.length > 0 && (
                         <div style={{ ...cardStyle, borderColor: 'var(--danger)', borderLeftWidth: '4px' }}>
                             <div style={{ fontSize: '12px', color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px', fontFamily: 'var(--font-heading)', fontWeight: 700 }}>
@@ -399,6 +751,7 @@ export default function LiveDashboard() {
                         </div>
                     <div
                         ref={transcriptRef}
+                        onScroll={handleScroll}
                         style={{ height: '600px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}
                     >
                         {transcripts.length === 0 && (
@@ -422,7 +775,26 @@ export default function LiveDashboard() {
                     </div>
                 </div>
 
+                    </>
+                )}
+
             </div>
+
+            {/* Toasts */}
+            <div style={{ position: 'fixed', bottom: '24px', right: '24px', display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 9999 }}>
+                {toasts.map(toast => (
+                    <div key={toast.id} style={{
+                        background: 'var(--bg-surface)', border: `1px solid var(--border)`, 
+                        borderLeft: `4px solid ${toast.type === 'success' ? 'var(--success)' : toast.type === 'error' ? 'var(--danger)' : toast.type === 'warning' ? '#f59e0b' : 'var(--accent)'}`,
+                        padding: '12px 16px', borderRadius: '4px', boxShadow: 'var(--shadow-lg)',
+                        fontSize: '13px', fontWeight: 500, minWidth: '250px',
+                        animation: 'slideIn 0.3s ease-out'
+                    }}>
+                        {toast.message}
+                    </div>
+                ))}
+            </div>
+            
             </PageTransition>
         </div>
     )

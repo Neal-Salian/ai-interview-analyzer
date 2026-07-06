@@ -5,8 +5,7 @@ from app.db.crud import get_job
 
 logger = logging.getLogger(__name__)
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "llama3.1:8b"  # change if ollama list shows a different name
+from app.core.config import settings
 
 
 def extract_job_context(job_id: str) -> str:
@@ -32,9 +31,10 @@ Respond with ONLY a JSON object. No explanation. No markdown. No backticks. Just
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
-                OLLAMA_URL,
+                f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/generate",
                 json={
-                    "model": OLLAMA_MODEL,
+                    "model": settings.OLLAMA_MODEL,
+                    "keep_alive": settings.OLLAMA_KEEP_ALIVE,
                     "prompt": prompt,
                     "stream": False,
                     "options": {
