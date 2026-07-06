@@ -21,14 +21,39 @@ def watchdog_thread(loop):
             # Event loop is blocked!
             with open("deadlock_dump.txt", "w") as f:
                 f.write("="*80 + "\nDEADLOCK DETECTED!\n" + "="*80 + "\n")
+                
+                try:
+                    from app.ml.scheduler_tracker import get_active_info
+                    active_count, active_jobs = get_active_info()
+                    f.write(f"\n--- ACTIVE ML JOBS ---\n")
+                    f.write(f"active_ml_jobs={active_count}\n")
+                    f.write(f"running=[{','.join(active_jobs)}]\n\n")
+                except Exception:
+                    pass
+                
+                # Asyncio task dump
+                f.write("--- ASYNCIO TASKS ---\n")
+                for task in asyncio.all_tasks(loop):
+                    f.write(f"Task: {task.get_name()} | Coro: {task.get_coro().__name__} | State: {task._state}\n")
+                    # Try to format the stack trace of the task
+                    task_stack = task.get_stack()
+                    if task_stack:
+                        traceback.print_stack(task_stack[-1], file=f)
+                    f.write("-" * 40 + "\n")
+                    
+                f.write("\n--- THREAD DUMP ---\n")
                 for thread_id, frame in sys._current_frames().items():
                     thread_name = "Unknown"
+                    native_id = "Unknown"
                     for t in threading.enumerate():
                         if t.ident == thread_id:
                             thread_name = t.name
+                            if hasattr(t, "native_id"):
+                                native_id = str(t.native_id)
                             break
-                    f.write(f"\n--- Thread: {thread_name} ({thread_id}) ---\n")
+                    f.write(f"\n--- Thread: {thread_name} (ID: {thread_id}, Native: {native_id}) ---\n")
                     traceback.print_stack(frame, file=f)
+                    
             print("DEADLOCK DUMPED TO deadlock_dump.txt")
             import os
             os._exit(1)
@@ -67,6 +92,37 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.critical(f"[STARTUP] Database unavailable — aborting: {e}")
         raise
+
+    import os
+    logger.info(f"[STARTUP] Python Version: {sys.version}")
+    logger.info(f"[STARTUP] OMP_NUM_THREADS={os.getenv('OMP_NUM_THREADS', 'unset')}")
+    logger.info(f"[STARTUP] MKL_NUM_THREADS={os.getenv('MKL_NUM_THREADS', 'unset')}")
+    logger.info(f"[STARTUP] OPENBLAS_NUM_THREADS={os.getenv('OPENBLAS_NUM_THREADS', 'unset')}")
+    logger.info(f"[STARTUP] VECLIB_MAXIMUM_THREADS={os.getenv('VECLIB_MAXIMUM_THREADS', 'unset')}")
+    
+    try:
+        import torch
+        logger.info(f"[STARTUP] PyTorch version: {torch.__version__}")
+    except ImportError:
+        logger.info("[STARTUP] PyTorch not installed")
+        
+    try:
+        import tensorflow as tf
+        logger.info(f"[STARTUP] TensorFlow version: {tf.__version__}")
+    except ImportError:
+        logger.info("[STARTUP] TensorFlow not installed")
+        
+    try:
+        import deepface
+        logger.info(f"[STARTUP] DeepFace version: {deepface.__version__}")
+    except ImportError:
+        logger.info("[STARTUP] DeepFace not installed")
+        
+    try:
+        import whisper
+        logger.info(f"[STARTUP] Whisper version: {getattr(whisper, '__version__', 'unknown')}")
+    except ImportError:
+        logger.info("[STARTUP] Whisper not installed")
 
     # ── Critical: Config Validation ───────────────────────────────────────
     from app.core.config import settings

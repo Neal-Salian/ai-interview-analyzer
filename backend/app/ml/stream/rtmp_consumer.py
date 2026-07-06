@@ -12,6 +12,21 @@ from app.db.crud import (
     save_attention, save_integrity_event,
 )
 from app.api.websocket import broadcast
+import os
+
+DISABLE_WHISPER = os.getenv("DISABLE_WHISPER", "false").lower() == "true"
+DISABLE_DEEPFACE = os.getenv("DISABLE_DEEPFACE", "false").lower() == "true"
+
+async def run_tracked_inference(job_name: str, func, *args):
+    from app.ml.scheduler_tracker import start_inference, end_inference
+    start_time = time.time()
+    info = start_inference(job_name)
+    try:
+        return await asyncio.to_thread(func, *args)
+    finally:
+        duration_ms = (time.time() - start_time) * 1000
+        end_inference(job_name, duration_ms, info)
+
 from app.core.logging_config import log_event
 from app.runtime.manager import RuntimeManager
 from app.ml.tracking.candidate_tracker import (
@@ -299,10 +314,15 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
 
                         # ── Run emotion and attention on the analysis frame ───
                         emotion_start = time.time()
-                        emotion, attention = await asyncio.gather(
-                            asyncio.to_thread(analyze_frame, analysis_frame),
-                            asyncio.to_thread(analyze_attention, analysis_frame),
-                        )
+                        if DISABLE_DEEPFACE:
+                            emotion = {"dominant_emotion": "neutral", "confidence": 100.0}
+                            attention = {"direction": "center", "confidence": 100.0}
+                            logger.info("[SCHEDULER] DeepFace disabled via DISABLE_DEEPFACE flag")
+                        else:
+                            emotion, attention = await asyncio.gather(
+                                run_tracked_inference("deepface_emotion", analyze_frame, analysis_frame),
+                                run_tracked_inference("deepface_attention", analyze_attention, analysis_frame),
+                            )
                         logger.info(f"[TIMING] emotion/attention inference took {(time.time() - emotion_start)*1000:.1f}ms")
 
                         # Save & broadcast emotion (existing)
@@ -398,9 +418,13 @@ async def consume_stream(session_id: str, rtmp_url: str, job_id: str = ""):
                     for attempt in range(1, MAX_TRANSCRIBE_RETRIES + 1):
                         try:
                             whisper_start = time.time()
-                            transcript = await asyncio.to_thread(
-                                transcribe_chunk, frames_to_process
-                            )
+                            if DISABLE_WHISPER:
+                                transcript = ""
+                                logger.info("[SCHEDULER] Whisper disabled via DISABLE_WHISPER flag")
+                            else:
+                                transcript = await run_tracked_inference(
+                                    "whisper", transcribe_chunk, frames_to_process
+                                )
                             inference_time = time.time() - whisper_start
                             
                             if DEBUG_TRANSCRIPT_PIPELINE:
