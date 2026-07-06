@@ -98,3 +98,11 @@ backend/mock_interview_runner.py
 backend/run_mock2.py
 backend/test_stream.py
 backend/trace.py
+
+backend/app/ml/scheduler_tracker.py
+backend_logs_exp1_whisper_only.txt
+backend_logs_exp2_deepface_only.txt
+backend_logs_exp3_concurrent.txt
+experiments.pid
+experiments_output.txt
+run_experiments.sh
